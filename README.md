@@ -175,7 +175,6 @@ python main.py
 # Launch REST API
 python api_server.py
 
-# API available at: http://localhost:5000
 ```
 
 ### **4. Test the System**
