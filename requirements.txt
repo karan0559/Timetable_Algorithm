@@ -1,0 +1,17 @@
+# Requirements for Timetable Generator API
+# For Smart India Hackathon (SIH) Integration
+
+# Core web framework
+Flask==2.3.3
+flask-cors==4.0.0
+
+# Data processing
+pandas==2.1.1
+numpy==1.24.3
+
+# Optimization (optional - fallback available)
+ortools==9.7.2996
+
+# Additional utilities
+python-dateutil==2.8.2
+requests==2.31.0

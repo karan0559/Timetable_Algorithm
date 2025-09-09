@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "total_courses": 4,
+    "generated_on": "2025-09-09T23:19:42.972353"
+  },
+  "courses_info": {
+    "dsa": {
+      "faculty": "raj",
+      "room": "101",
+      "duration": 2,
+      "available_slots": "Mon2,Wed2"
+    },
+    "ds": {
+      "faculty": "senani",
+      "room": "lab1",
+      "duration": 3,
+      "available_slots": "Tue1,Thu1,Fri1"
+    },
+    "maths": {
+      "faculty": "push",
+      "room": "101",
+      "duration": 4,
+      "available_slots": "Tue2,Wed3,Thu3,Fri2"
+    },
+    "sns": {
+      "faculty": "dk",
+      "room": "103",
+      "duration": 2,
+      "available_slots": "Fri4,Mon4"
+    }
+  }
+}
