@@ -44,7 +44,9 @@ class SimpleTimetableSolver:
             return False
     
     def parse_availability_slots(self, availability_data):
-        """Parse availability string or list into (day, time_slot) tuples."""
+        """Parse availability string into (day, time_slot) tuples.
+        Simple format: Monday,Wednesday,Friday or Monday 10am,Wednesday 2pm,Friday 9am
+        """
         if not availability_data:
             return []
         
@@ -56,20 +58,50 @@ class SimpleTimetableSolver:
             
         slots = []
         for slot in availability_str.split(','):
-            slot = slot.strip()
+            slot = slot.strip().lower()
             if not slot:
                 continue
+            
+            # Simple time mapping
+            time_map = {
+                '9am': '09:00-10:00', '10am': '10:00-11:00', '11am': '11:00-12:00', '12pm': '12:00-13:00',
+                '2pm': '14:00-15:00', '3pm': '15:00-16:00', '4pm': '16:00-17:00', '5pm': '17:00-18:00',
+                '9': '09:00-10:00', '10': '10:00-11:00', '11': '11:00-12:00', '12': '12:00-13:00',
+                '2': '14:00-15:00', '3': '15:00-16:00', '4': '16:00-17:00', '5': '17:00-18:00'
+            }
+            
+            # Check for day with time: "monday 10am" or "monday 10"
+            if ' ' in slot:
+                parts = slot.split()
+                day_part = parts[0]
+                time_part = parts[1] if len(parts) > 1 else '9am'
+            else:
+                # Just day name: "monday"
+                day_part = slot
+                time_part = '9am'  # Default to 9am
+            
+            # Map day names
+            if day_part in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']:
+                full_day = day_part.capitalize()
                 
-            # Extract day and time number
-            day_part = ''.join([c for c in slot if c.isalpha()])
-            time_part = ''.join([c for c in slot if c.isdigit()])
+                # Map time
+                if time_part in time_map:
+                    full_time = time_map[time_part]
+                    slots.append((full_day, full_time))
+                else:
+                    # Default to 9am if time not recognized
+                    slots.append((full_day, '09:00-10:00'))
             
-            # Map to full names
-            full_day = self.day_mapping.get(day_part.capitalize(), None)
-            full_time = self.slot_mapping.get(time_part, None)
-            
-            if full_day and full_time:
-                slots.append((full_day, full_time))
+            # Legacy support for old format (Mon2, Wed3, etc.)
+            elif len(slot) <= 4 and any(c.isalpha() for c in slot) and any(c.isdigit() for c in slot):
+                day_part = ''.join([c for c in slot if c.isalpha()])
+                time_part = ''.join([c for c in slot if c.isdigit()])
+                
+                full_day = self.day_mapping.get(day_part.capitalize(), None)
+                full_time = self.slot_mapping.get(time_part, None)
+                
+                if full_day and full_time:
+                    slots.append((full_day, full_time))
                 
         return slots
     
@@ -88,7 +120,9 @@ class SimpleTimetableSolver:
         return True
     
     def schedule_course(self, course_info: Dict, available_slots: List[Tuple[str, str]]) -> bool:
-        """Try to schedule a course in available slots."""
+        """Try to schedule a course with intelligent slot selection."""
+        import random
+        
         course_name = course_info['course']
         faculty = course_info['faculty']
         room = course_info['room']
@@ -105,10 +139,15 @@ class SimpleTimetableSolver:
         
         print(f"   Valid slots after conflict check: {valid_slots}")
         
-        # Try to schedule based on duration
+        # 🧠 INTELLIGENT SLOT SELECTION
         if len(valid_slots) >= duration:
-            # Take first 'duration' number of available slots
-            selected_slots = valid_slots[:duration]
+            # Smart selection based on multiple factors
+            if len(valid_slots) > duration:
+                # 🎯 OPTIMIZATION: Prefer spreading across days
+                selected_slots = self._select_optimal_slots(valid_slots, duration, course_name)
+            else:
+                # Use all available slots if exact match
+                selected_slots = valid_slots[:duration]
             
             for day, time_slot in selected_slots:
                 slot_key = f"{day}_{time_slot}"
@@ -136,6 +175,56 @@ class SimpleTimetableSolver:
             print(f"   ❌ Not enough valid slots (need {duration}, have {len(valid_slots)})")
         
         return False
+    
+    def _select_optimal_slots(self, valid_slots: List[Tuple[str, str]], duration: int, course_name: str) -> List[Tuple[str, str]]:
+        """Intelligently select optimal slots using combined approach."""
+        import random
+        
+        # 🎯 SMART DISTRIBUTION: Prefer spreading across different days
+        days_used = {}
+        for day, time_slot in valid_slots:
+            if day not in days_used:
+                days_used[day] = []
+            days_used[day].append((day, time_slot))
+        
+        selected = []
+        
+        # 🧠 OPTIMIZATION: Try to use different days first
+        available_days = list(days_used.keys())
+        random.shuffle(available_days)  # 🎲 Add randomness to day selection
+        
+        for day in available_days:
+            if len(selected) >= duration:
+                break
+            # Pick one slot from this day (prefer morning times)
+            day_slots = days_used[day]
+            # Sort by time preference (morning first, then afternoon)
+            day_slots.sort(key=lambda x: self._get_time_preference(x[1]))
+            selected.append(day_slots[0])
+        
+        # If we need more slots, add remaining from any day
+        if len(selected) < duration:
+            remaining_slots = [slot for slot in valid_slots if slot not in selected]
+            # 🎲 SMART RANDOMIZATION: Shuffle remaining for variety
+            random.shuffle(remaining_slots)
+            selected.extend(remaining_slots[:duration - len(selected)])
+        
+        return selected[:duration]
+    
+    def _get_time_preference(self, time_slot: str) -> int:
+        """Get preference score for time slots (lower = better)."""
+        # 🎯 INTELLIGENT PREFERENCES
+        preferences = {
+            '09:00-10:00': 3,  # Good morning time
+            '10:00-11:00': 1,  # Prime time
+            '11:00-12:00': 2,  # Good morning time
+            '12:00-13:00': 6,  # Lunch time (less preferred)
+            '14:00-15:00': 4,  # Good afternoon time
+            '15:00-16:00': 5,  # OK afternoon time
+            '16:00-17:00': 7,  # Late afternoon
+            '17:00-18:00': 8   # Evening (least preferred)
+        }
+        return preferences.get(time_slot, 9)
     
     def solve_timetable(self) -> Dict:
         """Generate conflict-free timetable."""

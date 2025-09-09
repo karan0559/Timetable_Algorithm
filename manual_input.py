@@ -67,7 +67,7 @@ class AdvancedManualInput:
             return False
             
         # Get duration with validation
-        duration = self.get_course_duration(faculty)
+        duration = self.get_course_duration(faculty, course_type)
         if not duration:
             return False
             
@@ -113,10 +113,10 @@ class AdvancedManualInput:
         print("   4 = 12:00-1:00 PM    |  8 = 5:00-6:00 PM")
         print()
         print("📝 FORMAT EXAMPLES:")
-        print("   ✅ Mon2,Wed2,Fri3")
-        print("   ✅ Tue1,Thu1") 
-        print("   ✅ monday2,wednesday3,friday1")
-        print("   ✅ MON2,WED3,FRI1")
+        print("   ✨ SIMPLE: Monday,Wednesday,Friday")
+        print("   ✨ FULL: Monday 10:00-11:00,Wednesday 11:00-12:00")
+        print("   ✅ LEGACY: Mon2,Wed2,Fri3")
+        print("   💡 TIP: Just type day names for automatic time assignment!")
         
         # Show current workload
         if faculty in self.faculty_workload:
@@ -193,34 +193,70 @@ class AdvancedManualInput:
             'capacity': capacity
         }
         
-    def get_course_duration(self, faculty):
-        """Get course duration with workload validation."""
-        while True:
-            duration_input = input("Duration (hours per week): ").strip()
-            try:
-                duration = int(duration_input)
-                if duration <= 0:
-                    print("❌ Duration must be positive")
-                    continue
-                    
-                # Check faculty workload limit
-                current_load = self.faculty_workload.get(faculty, 0)
-                projected_load = current_load + duration
-                
-                if projected_load > 20:  # 20 hours per week limit
-                    print(f"⚠️  WARNING: This will give {faculty} {projected_load} hours/week")
-                    print("   (Recommended maximum: 20 hours/week)")
-                    proceed = input("Continue anyway? (y/n): ").lower()
-                    if proceed != 'y':
+    def get_course_duration(self, faculty, course_type):
+        """Get course duration with automatic assignment based on course type."""
+        
+        # 🎯 AUTOMATIC DURATION ASSIGNMENT BY COURSE TYPE
+        type_durations = {
+            'Lecture': 3,      # Lecture: 3 hours/week (typical)
+            'Laboratory': 2,   # Laboratory: 2 hours/week  
+            'Tutorial': 1,     # Tutorial: 1 hour/week
+            'Seminar': 2       # Seminar: 2 hours/week
+        }
+        
+        suggested_duration = type_durations.get(course_type, 3)
+        
+        print(f"\n⏱️  DURATION ASSIGNMENT:")
+        print(f"   📚 Course Type: {course_type}")
+        print(f"   ⭐ Suggested Duration: {suggested_duration} hours/week")
+        print(f"   💡 Standard durations:")
+        print(f"      • Laboratory: 2 hours/week")
+        print(f"      • Tutorial: 1 hour/week") 
+        print(f"      • Seminar: 2 hours/week")
+        print(f"      • Lecture: 3 hours/week")
+        
+        # Ask if user wants to use suggested duration or custom
+        use_suggested = input(f"\nUse suggested duration ({suggested_duration} hours)? (y/n): ").lower()
+        
+        if use_suggested == 'y':
+            duration = suggested_duration
+            print(f"✅ Using {duration} hours/week for {course_type}")
+        else:
+            # Manual input
+            while True:
+                duration_input = input("Enter custom duration (hours per week): ").strip()
+                try:
+                    duration = int(duration_input)
+                    if duration <= 0:
+                        print("❌ Duration must be positive")
                         continue
-                        
-                return duration
+                    break
+                except ValueError:
+                    print("❌ Please enter a valid number")
+        
+        # Check faculty workload limit
+        current_load = self.faculty_workload.get(faculty, 0)
+        projected_load = current_load + duration
+        
+        if projected_load > 20:  # 20 hours per week limit
+            print(f"⚠️  WARNING: This will give {faculty} {projected_load} hours/week")
+            print("   (Recommended maximum: 20 hours/week)")
+            proceed = input("Continue anyway? (y/n): ").lower()
+            if proceed != 'y':
+                return None
                 
-            except ValueError:
-                print("❌ Please enter a valid number")
+        return duration
                 
     def parse_and_validate_availability(self, availability_str):
-        """Parse and validate availability with better error handling."""
+        """Parse and validate availability with intelligent time assignment.
+        Combines smart distribution, randomization, and optimization.
+        Supports multiple formats:
+        1. Simple: Monday,Wednesday,Friday (intelligent auto-assignment)
+        2. Full: Monday 10:00-11:00,Wednesday 11:00-12:00
+        3. Legacy: Mon2,Wed3,Fri1
+        """
+        import random
+        
         day_mapping = {
             'monday': 'Mon', 'mon': 'Mon',
             'tuesday': 'Tue', 'tue': 'Tue', 'tues': 'Tue',
@@ -229,70 +265,134 @@ class AdvancedManualInput:
             'friday': 'Fri', 'fri': 'Fri'
         }
         
+        time_slot_mapping = {
+            '09:00-10:00': '1', '10:00-11:00': '2', '11:00-12:00': '3', '12:00-13:00': '4',
+            '14:00-15:00': '5', '15:00-16:00': '6', '16:00-17:00': '7', '17:00-18:00': '8'
+        }
+        
+        # Smart time slot preferences based on course type and faculty load
+        preferred_times = {
+            'morning': ['2', '3', '1'],  # 10-11, 11-12, 9-10
+            'afternoon': ['5', '6', '7'], # 2-3, 3-4, 4-5
+            'flexible': ['2', '3', '5', '1', '6'] # Best general times
+        }
+        
         slots = []
         errors = []
         
         print(f"\n🔍 Parsing: '{availability_str}'")
         
-        for slot in availability_str.split(','):
+        # Count existing courses to determine smart distribution
+        total_existing_courses = len(self.courses)
+        
+        for slot_idx, slot in enumerate(availability_str.split(',')):
             slot = slot.strip()
             if not slot:
                 continue
             
             print(f"   Processing slot: '{slot}'")
-            
-            # Handle different input formats
             slot_lower = slot.lower()
             
-            # Try Mon2, Tue3, etc. format first (most common)
+            # Format 1: Intelligent day-only assignment
+            if slot_lower in day_mapping:
+                day_code = day_mapping[slot_lower]
+                
+                # 🧠 INTELLIGENT TIME ASSIGNMENT
+                if total_existing_courses == 0:
+                    # First course gets prime morning slot
+                    smart_time = '2'  # 10:00-11:00
+                    method = "first course (prime time)"
+                elif total_existing_courses == 1:
+                    # Second course gets different time to avoid conflicts
+                    smart_time = '3'  # 11:00-12:00
+                    method = "second course (distributed)"
+                elif total_existing_courses == 2:
+                    # Third course gets afternoon slot
+                    smart_time = '5'  # 14:00-15:00
+                    method = "third course (afternoon)"
+                else:
+                    # 🎲 SMART RANDOMIZATION for variety
+                    available_times = preferred_times['flexible'].copy()
+                    
+                    # 🔍 OPTIMIZATION: Avoid already used times
+                    used_times = set()
+                    for existing_course in self.courses:
+                        for existing_slot in existing_course.get('availability', '').split(','):
+                            if len(existing_slot) >= 4 and existing_slot[-1].isdigit():
+                                used_times.add(existing_slot[-1])
+                    
+                    # Remove heavily used times to spread load
+                    preferred_unused = [t for t in available_times if t not in used_times]
+                    if preferred_unused:
+                        smart_time = random.choice(preferred_unused)
+                        method = "optimized random (avoiding conflicts)"
+                    else:
+                        smart_time = random.choice(available_times)
+                        method = "smart random"
+                
+                formatted_slot = f"{day_code}{smart_time}"
+                if formatted_slot not in slots:
+                    slots.append(formatted_slot)
+                    time_display = {
+                        '1': '09:00-10:00', '2': '10:00-11:00', '3': '11:00-12:00', '4': '12:00-13:00',
+                        '5': '14:00-15:00', '6': '15:00-16:00', '7': '16:00-17:00', '8': '17:00-18:00'
+                    }[smart_time]
+                    print(f"   ✅ Added: {formatted_slot} ({time_display}) - {method}")
+                continue
+            
+            # Format 2: Full format (Monday 10:00-11:00)
+            if ':' in slot and '-' in slot:
+                parts = slot.split()
+                if len(parts) >= 2:
+                    day_part = parts[0].lower()
+                    time_part = ' '.join(parts[1:])
+                    
+                    if day_part in day_mapping and time_part in time_slot_mapping:
+                        day_code = day_mapping[day_part]
+                        time_code = time_slot_mapping[time_part]
+                        formatted_slot = f"{day_code}{time_code}"
+                        if formatted_slot not in slots:
+                            slots.append(formatted_slot)
+                            print(f"   ✅ Added: {formatted_slot} ({time_part}) - explicit time")
+                        continue
+            
+            # Format 3: Legacy format (Mon2, Tue3, etc.)
             if len(slot) >= 4:
                 day_part = slot[:3].lower()
                 time_part = slot[3:]
                 
-                print(f"   Day part: '{day_part}', Time part: '{time_part}'")
-                
-                # Check if day part matches our short format
                 if day_part in ['mon', 'tue', 'wed', 'thu', 'fri']:
                     if time_part.isdigit() and time_part in self.time_slots:
                         formatted_slot = f"{day_part.capitalize()}{time_part}"
                         if formatted_slot not in slots:
                             slots.append(formatted_slot)
-                            print(f"   ✅ Added: {formatted_slot}")
+                            print(f"   ✅ Added: {formatted_slot} - legacy format")
                         continue
                     else:
                         errors.append(f"Invalid time: '{time_part}' (use 1-8)")
                         continue
             
-            # Extract day and time parts for other formats
+            # Format 4: Extract day and time parts for mixed formats
             day_chars = ''.join([c for c in slot_lower if c.isalpha()])
             time_chars = ''.join([c for c in slot if c.isdigit()])
             
-            print(f"   Extracted - Day: '{day_chars}', Time: '{time_chars}'")
-            
-            # Validate day
-            if day_chars not in day_mapping:
-                errors.append(f"Invalid day: '{day_chars}' (use Mon, Tue, Wed, Thu, Fri)")
-                continue
-                
-            # Validate time
-            if time_chars not in self.time_slots:
-                errors.append(f"Invalid time: '{time_chars}' (use 1-8)")
-                continue
-                
-            formatted_slot = f"{day_mapping[day_chars]}{time_chars}"
-            if formatted_slot not in slots:
-                slots.append(formatted_slot)
-                print(f"   ✅ Added: {formatted_slot}")
+            if day_chars in day_mapping:
+                time_code = time_chars if time_chars and time_chars in self.time_slots else '2'
+                formatted_slot = f"{day_mapping[day_chars]}{time_code}"
+                if formatted_slot not in slots:
+                    slots.append(formatted_slot)
+                    print(f"   ✅ Added: {formatted_slot} - mixed format")
+            else:
+                errors.append(f"Invalid day: '{day_chars}' - use full names like Monday, Tuesday, etc.")
                 
         if errors:
             print("❌ Errors found:")
             for error in errors:
                 print(f"   - {error}")
             print("\n💡 Correct format examples:")
-            print("   - Mon2,Wed2,Fri3")
-            print("   - Tuesday2,Thursday3")
-            print("   - mon1,wed2,fri4")
-            print("   - 2 = 10:00-11:00 AM, 3 = 11:00-12:00 PM, etc.")
+            print("   ✨ Simple: Monday,Wednesday,Friday (intelligent auto-assignment)")
+            print("   ✨ Full: Monday 10:00-11:00,Wednesday 11:00-12:00")
+            print("   ✨ Legacy: Mon2,Wed3,Fri1")
             return None
             
         print(f"✅ Successfully parsed: {slots}")

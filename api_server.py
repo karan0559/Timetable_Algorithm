@@ -154,21 +154,21 @@ def get_sample_format():
         {
             "CourseName": "Data Structures",
             "Faculty": "Dr. Smith",
-            "FacultyAvailability": "Mon2,Wed2,Fri3",
+            "FacultyAvailability": "monday 10am,wednesday 10am,friday 11am",
             "RoomAvailable": "Hall 102",
             "Duration": 3
         },
         {
             "CourseName": "Database Systems", 
             "Faculty": "Dr. Johnson",
-            "FacultyAvailability": "Tue3,Thu3,Thu4",
+            "FacultyAvailability": "tuesday,thursday",
             "RoomAvailable": "Computer Lab 201",
             "Duration": 2
         },
         {
             "CourseName": "Machine Learning",
             "Faculty": "Dr. Wilson",
-            "FacultyAvailability": "Mon1,Wed1,Fri1",
+            "FacultyAvailability": "monday,wednesday,friday",
             "RoomAvailable": "AI Lab 301",
             "Duration": 3
         }
@@ -179,22 +179,24 @@ def get_sample_format():
         'field_descriptions': {
             'CourseName': 'Name of the course (string)',
             'Faculty': 'Faculty member name (string)',
-            'FacultyAvailability': 'Available time slots as comma-separated values (e.g., Mon2,Wed3,Fri1)',
+            'FacultyAvailability': 'Simple format: days and times (see examples below)',
             'RoomAvailable': 'Room name or number (string)',
             'Duration': 'Course duration in hours per week (integer, 1-8)'
         },
-        'time_slot_format': {
-            'days': ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-            'slots': {
-                '1': '09:00-10:00',
-                '2': '10:00-11:00', 
-                '3': '11:00-12:00',
-                '4': '12:00-13:00',
-                '5': '14:00-15:00',
-                '6': '15:00-16:00',
-                '7': '16:00-17:00',
-                '8': '17:00-18:00'
-            }
+        'simple_format_examples': {
+            'just_days': 'monday,tuesday,friday (defaults to 9am)',
+            'days_with_times': 'monday 10am,wednesday 2pm,friday 9am',
+            'mixed': 'monday,tuesday 3pm,friday (flexible combinations)'
+        },
+        'available_times': {
+            '9am or 9': '09:00-10:00 (Morning)',
+            '10am or 10': '10:00-11:00 (Morning)', 
+            '11am or 11': '11:00-12:00 (Late Morning)',
+            '12pm or 12': '12:00-13:00 (Lunch)',
+            '2pm or 2': '14:00-15:00 (Afternoon)',
+            '3pm or 3': '15:00-16:00 (Afternoon)',
+            '4pm or 4': '16:00-17:00 (Late Afternoon)',
+            '5pm or 5': '17:00-18:00 (Evening)'
         }
     })
 
