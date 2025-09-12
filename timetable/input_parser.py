@@ -38,7 +38,75 @@ class CSVToDataConverter:
         if self.course_data is None:
             print("❌ No data loaded. Call load_csv_data() first.")
             return {}
+        # --- Aggregate duplicate course rows (same CourseName) ---
+        # Enhanced: Handle course components (e.g., "Database Systems,Lecture" vs "Database Systems,Lab")
+        df = self.course_data.copy()
         
+        # Check if Component column exists for mixed lecture/lab courses
+        has_component = 'Component' in df.columns
+        
+        if has_component:
+            # FIXED: Use just course name as key to combine lecture + lab components
+            df['CourseKey'] = df['CourseName'].str.strip()
+            print("🔧 Detected Component column - combining lecture/lab components")
+        else:
+            # Original behavior: just course name
+            df['CourseKey'] = df['CourseName'].str.strip()
+        
+        agg_records = {}
+        for _, row in df.iterrows():
+            key = row['CourseKey']
+            course_base = row['CourseName'].strip()
+            component = row.get('Component', '').strip() if has_component else ''
+            
+            weekly = int(row['WeeklyCount']) if 'WeeklyCount' in row and not pd.isna(row['WeeklyCount']) else 0
+            avail_raw = self.parse_availability(row['FacultyAvailability'])
+            avail_set = set([a.strip() for a in avail_raw.split(',') if a.strip()]) if avail_raw else set()
+            
+            if key not in agg_records:
+                agg_records[key] = {
+                    'CourseName': course_base,  # Use base course name
+                    'Faculty': row['Faculty'],  # Will be updated if mixed
+                    'RoomAvailable': row['RoomAvailable'],  # Will be updated if mixed
+                    'SessionType': 'mixed' if has_component else str(row.get('SessionType','lecture')).lower(),
+                    'WeeklyCount': weekly,
+                    'AvailabilitySet': avail_set,
+                    'Components': [component] if component else []
+                }
+            else:
+                # Combine weekly counts from all components
+                agg_records[key]['WeeklyCount'] += weekly
+                # Union availability from all components
+                agg_records[key]['AvailabilitySet'].update(avail_set)
+                # Track components
+                if component and component not in agg_records[key]['Components']:
+                    agg_records[key]['Components'].append(component)
+                
+                # For mixed courses, combine faculty info
+                if has_component and row['Faculty'] != agg_records[key]['Faculty']:
+                    current_faculty = agg_records[key]['Faculty']
+                    new_faculty = row['Faculty']
+                    agg_records[key]['Faculty'] = f"{current_faculty} / {new_faculty}"
+        
+        # Build aggregated DataFrame
+        agg_rows = []
+        for rec in agg_records.values():
+            rec_out = {
+                'CourseName': rec['CourseName'],
+                'Faculty': rec['Faculty'],
+                'FacultyAvailability': ','.join(sorted(rec['AvailabilitySet'])) if rec['AvailabilitySet'] else '',
+                'RoomAvailable': rec['RoomAvailable'],
+                'SessionType': rec['SessionType'],
+                'WeeklyCount': rec['WeeklyCount']
+            }
+            if has_component:
+                rec_out['Components'] = ','.join(rec['Components']) if rec['Components'] else ''
+            agg_rows.append(rec_out)
+        
+        aggregated_df = pd.DataFrame(agg_rows)
+        self.course_data = aggregated_df  # replace with aggregated version
+        print(f"🔄 Aggregated courses: {len(df)} rows -> {len(aggregated_df)} unique course entries")
+
         # Extract unique entities
         unique_courses = self.course_data['CourseName'].unique().tolist()
         unique_faculty = self.course_data['Faculty'].unique().tolist()
@@ -63,7 +131,23 @@ class CSVToDataConverter:
             course_name = str(row['CourseName'])
             faculty_name = str(row['Faculty'])
             room_name = str(row['RoomAvailable'])
-            duration = int(row['Duration']) if pd.notna(row['Duration']) else 2
+            
+            # Handle new format with SessionType and WeeklyCount
+            if 'SessionType' in row and 'WeeklyCount' in row:
+                session_type = str(row['SessionType']).lower()
+                weekly_count = int(row['WeeklyCount']) if pd.notna(row['WeeklyCount']) else 1
+                
+                # Determine duration based on session type
+                if session_type == 'lab':
+                    duration = 2  # Lab sessions are 2 hours (e.g., 9:00-11:00)
+                else:  # lecture
+                    duration = weekly_count  # Lectures: 3 weekly lectures = duration 3
+            else:
+                # Fallback for old format
+                duration = int(row['Duration']) if pd.notna(row['Duration']) else 2
+                session_type = 'lab' if 'Lab' in str(room_name) else 'lecture'
+                weekly_count = duration
+            
             availability = self.parse_availability(row['FacultyAvailability'])
             
             # Course information - keep availability as string
@@ -72,6 +156,8 @@ class CSVToDataConverter:
                 'faculty': faculty_name,
                 'room': room_name,
                 'duration': duration,
+                'session_type': session_type,
+                'weekly_count': weekly_count,
                 'available_slots': availability,  # Keep as string
                 'room_type': 'lab' if 'Lab' in str(room_name) else 'lecture' if 'Lecture' in str(room_name) else 'seminar'
             }
@@ -82,6 +168,8 @@ class CSVToDataConverter:
             faculty_courses[faculty_name].append({
                 'course': course_name,
                 'duration': duration,
+                'session_type': session_type,
+                'weekly_count': weekly_count,
                 'available_slots': availability  # Keep as string
             })
             
@@ -91,7 +179,8 @@ class CSVToDataConverter:
             room_courses[room_name].append({
                 'course': course_name,
                 'faculty': faculty_name,
-                'duration': duration
+                'duration': duration,
+                'session_type': session_type
             })
         
         # Generate potential conflicts (courses that could clash)
@@ -219,18 +308,9 @@ class CSVToDataConverter:
             with open(f'{output_dir}training_dataset.json', 'w') as f:
                 json.dump(training_data, f, indent=2)
             
-            # Export raw data as JSON
-            raw_data = {
-                'courses': self.course_data.to_dict('records')
-            }
-            
-            with open(f'{output_dir}raw_dataset.json', 'w') as f:
-                json.dump(raw_data, f, indent=2)
-            
             print(f"✅ JSON files exported to {output_dir}")
             print(f"📋 Files created:")
             print(f"   - training_dataset.json (structured for ML training)")
-            print(f"   - raw_dataset.json (raw course data)")
             
         except Exception as e:
             print(f"❌ Error exporting to JSON: {str(e)}")
@@ -238,32 +318,22 @@ class CSVToDataConverter:
 def convert_csv_to_training_data():
     """Convert CSV data to training format."""
     try:
-        # Load CSV
-        df = pd.read_csv('courses.csv')
-        print(f"✅ Loaded {len(df)} courses from CSV")
+        # Use the CSVToDataConverter class to get proper aggregation
+        converter = CSVToDataConverter()
+        
+        # Load and aggregate the CSV data
+        if not converter.load_csv_data('courses.csv'):
+            return False
+        
+        # Generate training features (this includes aggregation)
+        training_data = converter.generate_training_features()
+        
+        if not training_data:
+            print("❌ Failed to generate training features")
+            return False
         
         # Create data directory
         os.makedirs('./data', exist_ok=True)
-        
-        # Process courses
-        courses_info = {}
-        for _, row in df.iterrows():
-            course_name = row['CourseName'].lower()
-            courses_info[course_name] = {
-                'faculty': row['Faculty'].lower(),
-                'room': str(row['RoomAvailable']),
-                'duration': int(row['Duration']),
-                'available_slots': str(row['FacultyAvailability']) if row['FacultyAvailability'] else ""
-            }
-        
-        # Create training dataset
-        training_data = {
-            'metadata': {
-                'total_courses': len(courses_info),
-                'generated_on': pd.Timestamp.now().isoformat()
-            },
-            'courses_info': courses_info
-        }
         
         # Save JSON
         with open('./data/training_dataset.json', 'w') as f:

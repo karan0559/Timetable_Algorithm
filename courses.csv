@@ -1,11 +1,7 @@
-CourseName,Faculty,FacultyAvailability,RoomAvailable,Duration
-Data Structures,Dr. Smith,"Monday,Wednesday,Friday",Hall 101,3
-Database Systems,Dr. Johnson,"Tuesday,Thursday",Computer Lab 201,2
-Machine Learning,Dr. Wilson,"Monday 14:00-15:00,Wednesday 14:00-15:00,Friday 14:00-15:00",AI Lab 301,3
-Computer Networks,Dr. Patel,"Tuesday,Thursday",Networks Lab 205,2
-Operating Systems,Dr. Kumar,"Monday,Wednesday,Friday",Computer Lab 202,3
-Software Engineering,Dr. Singh,"Tuesday,Thursday,Friday",Hall 102,3
-Web Development,Dr. Sharma,"Monday,Wednesday",Web Lab 301,2
-Algorithms,Dr. Gupta,"Tuesday,Thursday,Friday",Hall 103,3
-Cybersecurity,Dr. Verma,"Monday,Thursday",Security Lab 401,2
-Mobile Computing,Dr. Agarwal,"Wednesday,Friday",Mobile Lab 302,2
+CourseName,Faculty,FacultyAvailability,RoomAvailable,Duration,WeeklyCount,Component
+Python Programming,Dr. Smith,"Mon1,Wed1,Fri1",101,1,3,Lecture
+Python Programming,Prof. Johnson,"Tue2,Thu2",Lab1,2,2,Lab
+Data Science,Dr. Brown,"Mon2,Wed2",102,1,2,Lecture
+Web Development,Prof. Davis,"Tue3,Thu3,Fri3",103,1,2,Lecture
+Database Design,Dr. Wilson,"Mon3,Wed3",104,1,2,Lecture
+Database Design,Prof. White,"Thu1",Lab2,2,1,Lab

@@ -495,16 +495,11 @@ class AdvancedManualInput:
             })
             
         df = pd.DataFrame(csv_data)
-        df.to_csv('manual_courses.csv', index=False)
-        
-        # Also save detailed data
-        detailed_df = pd.DataFrame(self.courses)
-        detailed_df.to_csv('detailed_courses.csv', index=False)
+        df.to_csv('courses.csv', index=False)
         
         print(f"\n✅ Saved {len(self.courses)} courses")
         print("📁 Files created:")
-        print("   - manual_courses.csv (for timetable generation)")
-        print("   - detailed_courses.csv (with all details)")
+        print("   - courses.csv (main input file for timetable generation)")
         
         return True
         

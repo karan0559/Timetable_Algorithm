@@ -58,17 +58,17 @@ def show_full_timetable(timetable):
             print("   📭 No classes scheduled")
 
 def clean_old_data():
-    """Clean old training data."""
+    """Clean old training data only when switching input methods."""
+    # Only clean training_dataset.json when switching from CSV to manual input
+    # Keep timetable outputs for reference
     files_to_clean = [
-        './data/training_dataset.json',
-        './data/raw_dataset.json',
-        './data/ortools_timetable.json',
-        './data/simple_timetable.json'
+        './data/training_dataset.json'  # Only clean the input data, not outputs
     ]
     
     for file_path in files_to_clean:
         if os.path.exists(file_path):
             os.remove(file_path)
+            print(f"🗑️  Cleaned: {file_path}")
 
 def main():
     """Main entry point."""
@@ -82,8 +82,9 @@ def main():
     print("\n📝 Choose input method:")
     print("1. Use existing CSV file (courses.csv)")
     print("2. Enter course data manually")
+    print("3. Use existing JSON file (training_dataset.json)")
     
-    choice = input("\nEnter your choice (1 or 2): ").strip()
+    choice = input("\nEnter your choice (1, 2, or 3): ").strip()
     
     if choice == "2":
         print("\n🔄 Starting manual input...")
@@ -91,20 +92,25 @@ def main():
         success = get_manual_input()
         
         if success:
-            shutil.copy('manual_courses.csv', 'courses.csv')
-            print("✅ Using manually entered data")
+            print("✅ Using manually entered data (saved to courses.csv)")
         else:
             print("❌ Manual input cancelled")
             return
+    elif choice == "3":
+        if not os.path.exists('./data/training_dataset.json'):
+            print("❌ training_dataset.json not found in data/ folder!")
+            return
+        print("✅ Using existing training_dataset.json")
+        # Skip CSV conversion since we already have JSON
+        success = True
     else:
         if not os.path.exists('courses.csv'):
             print("❌ courses.csv not found!")
             return
         print("✅ Using existing courses.csv")
-    
-    # Convert data
-    print("\n📊 Converting data...")
-    success = convert_csv_to_training_data()
+        # Convert CSV to JSON
+        print("\n📊 Converting CSV data...")
+        success = convert_csv_to_training_data()
     
     if not success:
         return

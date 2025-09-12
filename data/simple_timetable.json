@@ -1,40 +1,33 @@
 {
   "Monday": {
-    "09:00-10:00": [
+    "09:00-10:00": [],
+    "10:00-11:00": [
       {
-        "course": "web development",
-        "faculty": "dr. sharma",
-        "room": "Web Lab 301",
-        "duration": 2
+        "course": "Software Architecture",
+        "faculty": "Dr. Thompson",
+        "room": "202",
+        "duration": 1,
+        "session_type": "lecture"
       },
       {
-        "course": "cybersecurity",
-        "faculty": "dr. verma",
-        "room": "Security Lab 401",
-        "duration": 2
-      },
-      {
-        "course": "data structures",
-        "faculty": "dr. smith",
-        "room": "Hall 101",
-        "duration": 3
-      },
-      {
-        "course": "machine learning",
-        "faculty": "dr. wilson",
-        "room": "AI Lab 301",
-        "duration": 3
-      },
-      {
-        "course": "operating systems",
-        "faculty": "dr. kumar",
-        "room": "Computer Lab 202",
-        "duration": 3
+        "course": "Advanced Algorithms",
+        "faculty": "Dr. Anderson",
+        "room": "201",
+        "duration": 1,
+        "session_type": "lecture"
       }
     ],
-    "10:00-11:00": [],
-    "11:00-12:00": [],
+    "11:00-12:00": [
+      {
+        "course": "Software Architecture",
+        "faculty": "Dr. Thompson",
+        "room": "202",
+        "duration": 1,
+        "session_type": "lecture"
+      }
+    ],
     "12:00-13:00": [],
+    "13:00-14:00": [],
     "14:00-15:00": [],
     "15:00-16:00": [],
     "16:00-17:00": [],
@@ -43,74 +36,58 @@
   "Tuesday": {
     "09:00-10:00": [
       {
-        "course": "database systems",
-        "faculty": "dr. johnson",
-        "room": "Computer Lab 201",
-        "duration": 2
-      },
-      {
-        "course": "computer networks",
-        "faculty": "dr. patel",
-        "room": "Networks Lab 205",
-        "duration": 2
-      },
-      {
-        "course": "software engineering",
-        "faculty": "dr. singh",
-        "room": "Hall 102",
-        "duration": 3
-      },
-      {
-        "course": "algorithms",
-        "faculty": "dr. gupta",
-        "room": "Hall 103",
-        "duration": 3
+        "course": "Machine Learning Lab",
+        "faculty": "Prof. Martinez",
+        "room": "Lab3",
+        "duration": 2,
+        "session_type": "lab"
       }
     ],
-    "10:00-11:00": [],
+    "10:00-11:00": [
+      {
+        "course": "Cloud Computing",
+        "faculty": "Prof. Chen",
+        "room": "203",
+        "duration": 1,
+        "session_type": "lecture"
+      },
+      {
+        "course": "Machine Learning Lab",
+        "faculty": "Prof. Martinez",
+        "room": "Lab3",
+        "duration": 2,
+        "session_type": "lab"
+      }
+    ],
     "11:00-12:00": [],
     "12:00-13:00": [],
+    "13:00-14:00": [],
     "14:00-15:00": [],
     "15:00-16:00": [],
     "16:00-17:00": [],
     "17:00-18:00": []
   },
   "Wednesday": {
-    "09:00-10:00": [
+    "09:00-10:00": [],
+    "10:00-11:00": [
       {
-        "course": "web development",
-        "faculty": "dr. sharma",
-        "room": "Web Lab 301",
-        "duration": 2
+        "course": "Advanced Algorithms",
+        "faculty": "Dr. Anderson",
+        "room": "201",
+        "duration": 1,
+        "session_type": "lecture"
       },
       {
-        "course": "mobile computing",
-        "faculty": "dr. agarwal",
-        "room": "Mobile Lab 302",
-        "duration": 2
-      },
-      {
-        "course": "data structures",
-        "faculty": "dr. smith",
-        "room": "Hall 101",
-        "duration": 3
-      },
-      {
-        "course": "machine learning",
-        "faculty": "dr. wilson",
-        "room": "AI Lab 301",
-        "duration": 3
-      },
-      {
-        "course": "operating systems",
-        "faculty": "dr. kumar",
-        "room": "Computer Lab 202",
-        "duration": 3
+        "course": "DevOps Engineering",
+        "faculty": "Dr. Rodriguez",
+        "room": "204",
+        "duration": 1,
+        "session_type": "lecture"
       }
     ],
-    "10:00-11:00": [],
     "11:00-12:00": [],
     "12:00-13:00": [],
+    "13:00-14:00": [],
     "14:00-15:00": [],
     "15:00-16:00": [],
     "16:00-17:00": [],
@@ -119,86 +96,58 @@
   "Thursday": {
     "09:00-10:00": [
       {
-        "course": "database systems",
-        "faculty": "dr. johnson",
-        "room": "Computer Lab 201",
-        "duration": 2
-      },
-      {
-        "course": "computer networks",
-        "faculty": "dr. patel",
-        "room": "Networks Lab 205",
-        "duration": 2
-      },
-      {
-        "course": "cybersecurity",
-        "faculty": "dr. verma",
-        "room": "Security Lab 401",
-        "duration": 2
-      },
-      {
-        "course": "software engineering",
-        "faculty": "dr. singh",
-        "room": "Hall 102",
-        "duration": 3
-      },
-      {
-        "course": "algorithms",
-        "faculty": "dr. gupta",
-        "room": "Hall 103",
-        "duration": 3
+        "course": "Machine Learning Lab",
+        "faculty": "Prof. Martinez",
+        "room": "Lab3",
+        "duration": 2,
+        "session_type": "lab"
       }
     ],
-    "10:00-11:00": [],
+    "10:00-11:00": [
+      {
+        "course": "Machine Learning Lab",
+        "faculty": "Prof. Martinez",
+        "room": "Lab3",
+        "duration": 2,
+        "session_type": "lab"
+      },
+      {
+        "course": "Cloud Computing",
+        "faculty": "Prof. Chen",
+        "room": "203",
+        "duration": 1,
+        "session_type": "lecture"
+      }
+    ],
     "11:00-12:00": [],
     "12:00-13:00": [],
+    "13:00-14:00": [],
     "14:00-15:00": [],
     "15:00-16:00": [],
     "16:00-17:00": [],
     "17:00-18:00": []
   },
   "Friday": {
-    "09:00-10:00": [
+    "09:00-10:00": [],
+    "10:00-11:00": [
       {
-        "course": "mobile computing",
-        "faculty": "dr. agarwal",
-        "room": "Mobile Lab 302",
-        "duration": 2
+        "course": "System Design",
+        "faculty": "Prof. Kumar",
+        "room": "205",
+        "duration": 1,
+        "session_type": "lecture"
       },
       {
-        "course": "data structures",
-        "faculty": "dr. smith",
-        "room": "Hall 101",
-        "duration": 3
-      },
-      {
-        "course": "machine learning",
-        "faculty": "dr. wilson",
-        "room": "AI Lab 301",
-        "duration": 3
-      },
-      {
-        "course": "operating systems",
-        "faculty": "dr. kumar",
-        "room": "Computer Lab 202",
-        "duration": 3
-      },
-      {
-        "course": "software engineering",
-        "faculty": "dr. singh",
-        "room": "Hall 102",
-        "duration": 3
-      },
-      {
-        "course": "algorithms",
-        "faculty": "dr. gupta",
-        "room": "Hall 103",
-        "duration": 3
+        "course": "Advanced Algorithms",
+        "faculty": "Dr. Anderson",
+        "room": "201",
+        "duration": 1,
+        "session_type": "lecture"
       }
     ],
-    "10:00-11:00": [],
     "11:00-12:00": [],
     "12:00-13:00": [],
+    "13:00-14:00": [],
     "14:00-15:00": [],
     "15:00-16:00": [],
     "16:00-17:00": [],
