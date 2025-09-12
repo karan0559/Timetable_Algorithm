@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎓 Timetable Generator - API Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            padding: 30px;
+            text-align: center;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            background: #f9f9f9;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        textarea {
+            height: 150px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            color: #333;
+        }
+
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .response.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .response.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .course-inputs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .course-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background: white;
+        }
+
+        .course-card h3 {
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        .timetable-display {
+            overflow-x: auto;
+        }
+
+        .timetable-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .timetable-table th,
+        .timetable-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+            font-size: 12px;
+        }
+
+        .timetable-table th {
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+        }
+
+        .timetable-table td {
+            min-height: 60px;
+        }
+
+        .session {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 4px;
+            padding: 4px;
+            margin: 2px;
+            font-size: 11px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-healthy { background: #4caf50; }
+        .status-unhealthy { background: #f44336; }
+        .status-checking { background: #ff9800; }
+
+        @media (max-width: 768px) {
+            .course-inputs {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 Timetable Generator</h1>
+            <p>Smart India Hackathon - API Demo Interface</p>
+        </div>
+
+        <div class="main-content">
+            <!-- API Status Section -->
+            <div class="section">
+                <h2>📊 API Status</h2>
+                <div id="apiStatus">
+                    <span class="status-indicator status-checking"></span>
+                    <span>Checking API status...</span>
+                </div>
+                <button class="btn btn-secondary" onclick="checkApiHealth()">🔄 Refresh Status</button>
+            </div>
+
+            <!-- Course Input Section -->
+            <div class="section">
+                <h2>📚 Course Configuration</h2>
+                <div class="form-group">
+                    <label for="numCourses">Number of Courses:</label>
+                    <select id="numCourses" onchange="generateCourseInputs()">
+                        <option value="2">2 Courses</option>
+                        <option value="3">3 Courses</option>
+                        <option value="4">4 Courses</option>
+                        <option value="5">5 Courses</option>
+                        <option value="6" selected>6 Courses</option>
+                    </select>
+                </div>
+                
+                <div id="courseInputs" class="course-inputs">
+                    <!-- Course input cards will be generated here -->
+                </div>
+
+                <div class="form-group">
+                    <label for="solverType">Solver Type:</label>
+                    <select id="solverType">
+                        <option value="simple" selected>Simple Solver (Fast)</option>
+                        <option value="ortools">OR-Tools Solver (Advanced)</option>
+                    </select>
+                </div>
+
+                <button class="btn" onclick="validateCourses()">✅ Validate Courses</button>
+                <button class="btn" onclick="generateTimetable()">🚀 Generate Timetable</button>
+                <button class="btn btn-secondary" onclick="loadSampleData()">📄 Load Sample Data</button>
+            </div>
+
+            <!-- Results Section -->
+            <div class="section">
+                <h2>📋 Results</h2>
+                <div id="results"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000';
+        
+        // Check API health on page load
+        window.onload = function() {
+            checkApiHealth();
+            generateCourseInputs();
+            loadSampleData();
+        };
+
+        async function checkApiHealth() {
+            const statusDiv = document.getElementById('apiStatus');
+            statusDiv.innerHTML = '<span class="status-indicator status-checking"></span><span>Checking API status...</span>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'healthy') {
+                    statusDiv.innerHTML = `
+                        <span class="status-indicator status-healthy"></span>
+                        <span>API is healthy (v${data.api_version})</span>
+                        <br><small>Solvers: ${Object.entries(data.solvers).map(([k,v]) => `${k}: ${v}`).join(', ')}</small>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<span class="status-indicator status-unhealthy"></span><span>API is unhealthy</span>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<span class="status-indicator status-unhealthy"></span><span>API server not running (Start with: python api_server.py)</span>';
+            }
+        }
+
+        function generateCourseInputs() {
+            const numCourses = parseInt(document.getElementById('numCourses').value);
+            const container = document.getElementById('courseInputs');
+            
+            container.innerHTML = '';
+            
+            for (let i = 0; i < numCourses; i++) {
+                const courseCard = document.createElement('div');
+                courseCard.className = 'course-card';
+                courseCard.innerHTML = `
+                    <h3>Course ${i + 1}</h3>
+                    <div class="form-group">
+                        <label>Course Name:</label>
+                        <input type="text" id="course_${i}_name" placeholder="e.g., Mathematics">
+                    </div>
+                    <div class="form-group">
+                        <label>Faculty:</label>
+                        <input type="text" id="course_${i}_faculty" placeholder="e.g., Dr. Arjun Mehta">
+                    </div>
+                    <div class="form-group">
+                        <label>Room:</label>
+                        <input type="text" id="course_${i}_room" placeholder="e.g., Room 101">
+                    </div>
+                    <div class="form-group">
+                        <label>Duration (hours):</label>
+                        <select id="course_${i}_duration">
+                            <option value="1" selected>1 hour</option>
+                            <option value="2">2 hours</option>
+                            <option value="3">3 hours</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Weekly Count:</label>
+                        <select id="course_${i}_weekly">
+                            <option value="1">1 session/week</option>
+                            <option value="2">2 sessions/week</option>
+                            <option value="3" selected>3 sessions/week</option>
+                            <option value="4">4 sessions/week</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Session Type:</label>
+                        <select id="course_${i}_type">
+                            <option value="lecture" selected>Lecture</option>
+                            <option value="lab">Lab</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Availability (optional):</label>
+                        <input type="text" id="course_${i}_availability" placeholder="e.g., Mon1,Mon2,Tue1,Wed1">
+                        <small>Format: Mon1=Monday 9-10, Tue2=Tuesday 10-11, etc.</small>
+                    </div>
+                `;
+                container.appendChild(courseCard);
+            }
+        }
+
+        function loadSampleData() {
+            const sampleCourses = [
+                { name: "Mathematics", faculty: "Dr. Arjun Mehta", room: "Room 101", duration: 1, weekly: 3, type: "lecture", availability: "Mon1,Mon2,Tue1,Wed1,Thu1" },
+                { name: "Physics", faculty: "Prof. Kavita Sharma", room: "Room 102", duration: 1, weekly: 3, type: "lecture", availability: "Mon2,Tue2,Wed2,Thu2,Fri1" },
+                { name: "Chemistry Lab", faculty: "Dr. Ravi Kumar", room: "Lab 101", duration: 2, weekly: 1, type: "lab", availability: "Mon3,Tue3,Wed3,Thu3,Fri3" },
+                { name: "Computer Science", faculty: "Prof. Priya Singh", room: "Room 103", duration: 1, weekly: 4, type: "lecture", availability: "Mon1,Tue1,Wed1,Thu1,Fri1" },
+                { name: "Biology Lab", faculty: "Dr. Arjun Mehta", room: "Lab 102", duration: 2, weekly: 1, type: "lab", availability: "Mon4,Tue4,Wed4,Thu4,Fri4" },
+                { name: "English", faculty: "Prof. Neha Gupta", room: "Room 104", duration: 1, weekly: 2, type: "lecture", availability: "Mon2,Wed2,Fri2" }
+            ];
+
+            const numCourses = parseInt(document.getElementById('numCourses').value);
+            
+            for (let i = 0; i < numCourses && i < sampleCourses.length; i++) {
+                const course = sampleCourses[i];
+                document.getElementById(`course_${i}_name`).value = course.name;
+                document.getElementById(`course_${i}_faculty`).value = course.faculty;
+                document.getElementById(`course_${i}_room`).value = course.room;
+                document.getElementById(`course_${i}_duration`).value = course.duration;
+                document.getElementById(`course_${i}_weekly`).value = course.weekly;
+                document.getElementById(`course_${i}_type`).value = course.type;
+                document.getElementById(`course_${i}_availability`).value = course.availability;
+            }
+        }
+
+        function collectCourseData() {
+            const numCourses = parseInt(document.getElementById('numCourses').value);
+            const courses = [];
+            
+            for (let i = 0; i < numCourses; i++) {
+                const course = {
+                    course_name: document.getElementById(`course_${i}_name`).value,
+                    faculty: document.getElementById(`course_${i}_faculty`).value,
+                    room: document.getElementById(`course_${i}_room`).value,
+                    duration: parseInt(document.getElementById(`course_${i}_duration`).value),
+                    weekly_count: parseInt(document.getElementById(`course_${i}_weekly`).value),
+                    session_type: document.getElementById(`course_${i}_type`).value,
+                    availability: document.getElementById(`course_${i}_availability`).value
+                };
+                courses.push(course);
+            }
+            
+            return courses;
+        }
+
+        async function validateCourses() {
+            const courses = collectCourseData();
+            const solverPreference = document.getElementById('solverType').value;
+            
+            const requestData = {
+                courses: courses,
+                solver_preference: solverPreference
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/validate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                const data = await response.json();
+                
+                const resultsDiv = document.getElementById('results');
+                
+                if (data.success) {
+                    resultsDiv.innerHTML = `
+                        <div class="response success">✅ Validation Successful!
+                        
+Total Courses: ${data.total_courses}
+Validation Errors: ${data.validation_errors.length}
+Warnings: ${data.warnings.length}
+
+${data.warnings.length > 0 ? 'Warnings:\n' + data.warnings.map(w => '⚠️ ' + w).join('\n') : ''}
+${data.validation_errors.length > 0 ? 'Errors:\n' + JSON.stringify(data.validation_errors, null, 2) : ''}
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="response error">❌ Validation Failed
+
+${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('results').innerHTML = `
+                    <div class="response error">❌ Network Error: ${error.message}</div>
+                `;
+            }
+        }
+
+        async function generateTimetable() {
+            const courses = collectCourseData();
+            const solverPreference = document.getElementById('solverType').value;
+            
+            const requestData = {
+                courses: courses,
+                solver_preference: solverPreference,
+                options: {
+                    allow_conflicts: false,
+                    optimize_quality: true
+                }
+            };
+            
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="response">🔄 Generating timetable...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const timetableHtml = generateTimetableHTML(data.timetable);
+                    
+                    resultsDiv.innerHTML = `
+                        <div class="response success">🎉 Timetable Generated Successfully!
+                        
+📊 Statistics:
+- Total Sessions: ${data.statistics.total_sessions}
+- Courses Scheduled: ${data.statistics.courses_scheduled}/${data.statistics.total_courses}
+- Coverage: ${data.statistics.coverage_percentage}%
+- Quality Rating: ${data.statistics.quality_rating}
+- Solver Used: ${data.solver_used}
+- Generation Time: ${new Date(data.generation_time).toLocaleString()}
+
+                        </div>
+                        ${timetableHtml}
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="response error">❌ Generation Failed
+
+${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="response error">❌ Network Error: ${error.message}</div>
+                `;
+            }
+        }
+
+        function generateTimetableHTML(timetable) {
+            const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            const timeSlots = [
+                '09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00',
+                '13:00-14:00', '14:00-15:00', '15:00-16:00', '16:00-17:00', '17:00-18:00'
+            ];
+            
+            let html = '<div class="timetable-display"><table class="timetable-table">';
+            
+            // Header row
+            html += '<tr><th>Time</th>';
+            days.forEach(day => {
+                html += `<th>${day}</th>`;
+            });
+            html += '</tr>';
+            
+            // Time slot rows
+            timeSlots.forEach(timeSlot => {
+                html += `<tr><td><strong>${timeSlot}</strong></td>`;
+                
+                days.forEach(day => {
+                    html += '<td>';
+                    
+                    if (timetable[day] && timetable[day][timeSlot]) {
+                        const sessions = timetable[day][timeSlot];
+                        sessions.forEach(session => {
+                            html += `
+                                <div class="session">
+                                    <strong>${session.course}</strong><br>
+                                    👨‍🏫 ${session.faculty}<br>
+                                    🏛️ ${session.room}<br>
+                                    ⏱️ ${session.duration}h ${session.session_type}
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    html += '</td>';
+                });
+                
+                html += '</tr>';
+            });
+            
+            html += '</table></div>';
+            return html;
+        }
+    </script>
+</body>
+</html>
