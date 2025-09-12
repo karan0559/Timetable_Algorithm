@@ -19,13 +19,25 @@ class SimpleTimetableSolver:
         # ---------------- Policy / tuning constants ----------------
         self.MAX_FACULTY_SESSIONS_PER_DAY = 5        # Hard per-faculty cap (relaxed if needed)
         self.PREFERRED_FACULTY_SESSIONS_PER_DAY = 3  # Soft distribution target
-        self.allow_parallel = True                   # Allow multiple courses same slot (disables global single-slot restriction)
+        self.allow_parallel = False                  # PREVENT student conflicts - only ONE course per time slot
         self.default_lab_session_length = 2          # Default contiguous hours per lab block
+
+        # ---------------- SOFT CONSTRAINT PENALTY SCORES ----------------
+        self.PENALTY_CONSECUTIVE_SAME_COURSE = 1     # +1 if same course appears twice in a row
+        self.PENALTY_MULTIPLE_COURSE_PER_DAY = 1     # +1 if a course occurs more than once per day
+        self.PENALTY_LATE_LECTURE = 2                # +2 if a lecture is after 17:00
+        self.PENALTY_OVERLOADED_DAY = 2              # +2 if a day has >7 hours scheduled
+        self.PENALTY_VERY_LATE_LECTURE = 3           # +3 for 17:00-18:00 lectures
+        self.PENALTY_LUNCH_HOUR = 1                  # +1 for 12:00-13:00 scheduling
+        self.PENALTY_CORE_SUBJECT_LATE = 3           # +3 for core subjects in late slots
+        self.PENALTY_UNBALANCED_DAYS = 1             # +1 for daily load imbalance
+        self.PENALTY_LECTURE_LAB_SAME_DAY = 2        # +2 for lecture+lab same day same course
 
         # ---------------- Tracking for validation & diagnostics ----------------
         self.expected_weekly: Dict[str, int] = {}     # course -> weekly_count expected
         self.actual_weekly = defaultdict(int)         # course -> actual scheduled occurrences
         self.failure_reasons: Dict[str, str] = {}     # course -> reason code string
+        self.total_penalty_score = 0                  # Track total soft constraint violations
 
         # ---------------- Canonical ordering ----------------
         self.days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
@@ -58,18 +70,74 @@ class SimpleTimetableSolver:
         }
         
     def load_training_data(self, file_path: str = './data/training_dataset.json'):
-        """Load training data from JSON file."""
+        """Load training data from JSON file with auto-format detection and conversion."""
         try:
             with open(file_path, 'r') as f:
-                self.training_data = json.load(f)
-            print(f"✅ Loaded training data: {self.training_data['metadata']['total_courses']} courses")
+                data = json.load(f)
+            
+            # Auto-detect format and convert if needed
+            if 'courses' in data and 'metadata' not in data:
+                print("🔧 Detected simple format - auto-converting to metadata format...")
+                data = self._convert_simple_to_metadata(data, file_path)
+                
+                # 🚫 DISABLED: Don't overwrite the original file
+                # with open(file_path, 'w') as f:
+                #     json.dump(data, f, indent=2)
+                print(f"✅ Auto-converted to metadata format (in memory only)")
+            
+            self.training_data = data
+            total_courses = self.training_data['metadata']['total_courses']
+            print(f"✅ Loaded training data: {total_courses} courses")
             return True
+            
         except FileNotFoundError:
             print(f"❌ Training data file not found: {file_path}")
             return False
         except Exception as e:
             print(f"❌ Error loading training data: {str(e)}")
             return False
+    
+    def _convert_simple_to_metadata(self, simple_data, file_path):
+        """Convert simple courses format to metadata format automatically."""
+        from datetime import datetime
+        
+        courses_info = {}
+        
+        # Convert each course from simple format
+        for course in simple_data['courses']:
+            # Handle both standard and custom field names
+            course_name = (course.get('course_name') or course.get('CourseName', '')).lower().strip()
+            faculty = (course.get('faculty') or course.get('Faculty', '')).strip()
+            room = (course.get('room') or course.get('RoomAvailable', '')).strip()
+            duration = course.get('duration') or course.get('Duration', 1)
+            availability = (course.get('faculty_availability') or 
+                          course.get('FacultyAvailability', '') or
+                          course.get('availability', ''))
+            
+            available_slots = self.parse_availability_slots(availability)
+            
+            courses_info[course_name] = {
+                'faculty': faculty,
+                'room': room, 
+                'duration': duration,
+                'weekly_count': course.get('weekly_count', duration),
+                'session_type': course.get('session_type', 'lecture').lower(),
+                'available_slots': available_slots
+            }
+        
+        # Create metadata format
+        metadata_data = {
+            'metadata': {
+                'total_courses': len(courses_info),
+                'generation_date': datetime.now().strftime('%Y-%m-%d'),
+                'format_version': '1.0',
+                'description': f'Auto-converted from simple format',
+                'source_file': file_path
+            },
+            'courses_info': courses_info
+        }
+        
+        return metadata_data
     
     def parse_availability_slots(self, availability_data):
         """Parse availability string into (day, time_slot) tuples.
@@ -350,19 +418,50 @@ class SimpleTimetableSolver:
         course = state['name']
         faculty = state['faculty']
         room = state['room']
+        
+        print(f"🔍 Trying to schedule one session for {course}")
+        print(f"   Faculty: {faculty}, Room: {room}")
+        print(f"   Available slots: {len(state['available_slots'])}")
+        
         # Build valid slots
         valid = []
         for day, ts in state['available_slots']:
-            if (self.is_slot_available(day, ts, faculty, room) and not self.has_student_conflict(day, ts, course)):
+            slot_available = self.is_slot_available(day, ts, faculty, room)
+            student_conflict = self.has_student_conflict(day, ts, course)
+            
+            if slot_available and not student_conflict:
                 valid.append((day, ts))
+            elif not slot_available:
+                print(f"      ❌ {day} {ts}: Slot not available")
+            elif student_conflict:
+                print(f"      ❌ {day} {ts}: Student conflict")
+        
+        print(f"   Valid slots after filtering: {len(valid)}")
+        
         if not valid:
+            print(f"   ❌ No valid slots found for {course}")
             return False
-        # Prefer day with lowest load and faculty day load; then time preference
+        
+        # Systematic soft constraint penalty scoring
         def score(slot):
             d, t = slot
-            return (self.day_load[d], self.faculty_day_load[(faculty, d)], self._get_time_preference(t))
+            
+            # Base score: day load, faculty load, time preference
+            base_score = (self.day_load[d], self.faculty_day_load[(faculty, d)], self._get_time_preference(t))
+            
+            # Calculate comprehensive soft constraint penalty
+            soft_penalty = self.calculate_soft_constraint_penalty(course, d, t)
+            
+            # Add small random factor to break ties and enable exploration
+            random_factor = random.uniform(0, 0.1)
+            
+            # Return combined score (lower is better)
+            return base_score + (soft_penalty, random_factor)
         valid.sort(key=score)
         day, ts = valid[0]
+        
+        print(f"   ✅ Selected slot: {day} {ts}")
+        
         slot_key = f"{day}_{ts}"
         self.faculty_schedule[faculty].add(slot_key)
         self.room_schedule[room].add(slot_key)
@@ -393,52 +492,88 @@ class SimpleTimetableSolver:
         faculty = state['faculty']
         room = state['room']
         block_hours = self.default_lab_session_length
+        
         # Organize by day
         day_slots = defaultdict(list)
         for d, ts in state['available_slots']:
             day_slots[d].append(ts)
         for d in day_slots:
             day_slots[d].sort(key=lambda x: self._get_time_index(x))
-        # Candidate days ordered by load
-        ordered_days = sorted(day_slots.keys(), key=lambda d: (self.day_load[d], self.faculty_day_load[(faculty, d)], d))
-        for day in ordered_days:
+        
+        # Find all valid contiguous blocks with comprehensive scoring
+        valid_blocks = []
+        
+        for day in day_slots.keys():
             times = day_slots[day]
             for i in range(len(times)):
                 segment = times[i:i+block_hours]
                 if len(segment) < block_hours:
                     break
+                    
+                # Check if times are truly consecutive
                 base = self._get_time_index(segment[0])
                 if any(self._get_time_index(segment[j]) != base + j for j in range(block_hours)):
                     continue
-                if any((not self.is_slot_available(day, ts, faculty, room) or self.has_student_conflict(day, ts, course)) for ts in segment):
+                    
+                # Check availability for all slots in the block
+                if any((not self.is_slot_available(day, ts, faculty, room) or 
+                       self.has_student_conflict(day, ts, course)) for ts in segment):
                     continue
-                # schedule
-                for ts in segment:
-                    slot_key = f"{day}_{ts}"
-                    self.faculty_schedule[faculty].add(slot_key)
-                    self.room_schedule[room].add(slot_key)
-                    if not self.allow_parallel:
-                        self.global_slot_usage.add(slot_key)
-                    self.day_load[day] += 1
-                    self.faculty_day_load[(faculty, day)] += 1
-                    if slot_key not in self.course_schedule:
-                        self.course_schedule[slot_key] = set()
-                    self.course_schedule[slot_key].add(course)
-                    if day not in self.scheduled_slots:
-                        self.scheduled_slots[day] = {}
-                    if ts not in self.scheduled_slots[day]:
-                        self.scheduled_slots[day][ts] = []
-                    self.scheduled_slots[day][ts].append({
-                        'course': course,
-                        'faculty': faculty,
-                        'room': room,
-                        'duration': block_hours,
-                        'session_type': 'lab'
-                    })
-                    self.actual_weekly[course] += 1  # counting hours
-                return True
-        # No block
-        return False
+                
+                # Score this block using systematic soft constraint penalties
+                first_slot = segment[0]
+                
+                # Calculate base score
+                base_score = (
+                    self.day_load[day], 
+                    self.faculty_day_load[(faculty, day)], 
+                    self._get_time_preference(first_slot)
+                )
+                
+                # Calculate soft constraint penalty for this lab placement
+                soft_penalty = self.calculate_soft_constraint_penalty(course, day, first_slot)
+                
+                # Small random factor for tie-breaking
+                random_factor = random.uniform(0, 0.1)
+                
+                score_tuple = base_score + (soft_penalty, random_factor)
+                
+                valid_blocks.append((day, segment, score_tuple))
+        
+        if not valid_blocks:
+            return False
+            
+        # Sort by comprehensive score and select best block
+        valid_blocks.sort(key=lambda x: x[2])  # Sort by score tuple
+        day, segment, score = valid_blocks[0]
+        
+        print(f"   ✅ Selected lab block: {day} {segment[0]}-{segment[-1]} (score: {score})")
+        
+        # Schedule the entire block
+        for ts in segment:
+            slot_key = f"{day}_{ts}"
+            self.faculty_schedule[faculty].add(slot_key)
+            self.room_schedule[room].add(slot_key)
+            if not self.allow_parallel:
+                self.global_slot_usage.add(slot_key)
+            self.day_load[day] += 1
+            self.faculty_day_load[(faculty, day)] += 1
+            if slot_key not in self.course_schedule:
+                self.course_schedule[slot_key] = set()
+            self.course_schedule[slot_key].add(course)
+            if day not in self.scheduled_slots:
+                self.scheduled_slots[day] = {}
+            if ts not in self.scheduled_slots[day]:
+                self.scheduled_slots[day][ts] = []
+            self.scheduled_slots[day][ts].append({
+                'course': course,
+                'faculty': faculty,
+                'room': room,
+                'duration': block_hours,
+                'session_type': 'lab'
+            })
+            self.actual_weekly[course] += 1  # counting hours
+        return True
 
     def _schedule_lecture_sessions(self, course_info: Dict, available_slots: List[Tuple[str, str]]) -> bool:
         """Schedule lecture sessions (3 separate 1-hour slots)."""
@@ -675,19 +810,525 @@ class SimpleTimetableSolver:
     
     def _get_time_preference(self, time_slot: str) -> int:
         """Get preference score for time slots (lower = better)."""
-        # 🎯 INTELLIGENT PREFERENCES (9 AM to 6 PM)
+        # 🎯 ENHANCED PREFERENCES - VERY strong bias against late slots for lectures
         preferences = {
-            '09:00-10:00': 3,  # Good morning time
-            '10:00-11:00': 1,  # Prime time
-            '11:00-12:00': 2,  # Good morning time
-            '12:00-13:00': 6,  # Lunch time (less preferred)
-            '13:00-14:00': 7,  # Post-lunch (less preferred)
-            '14:00-15:00': 4,  # Good afternoon time
-            '15:00-16:00': 5,  # OK afternoon time
-            '16:00-17:00': 8,  # Late afternoon
-            '17:00-18:00': 9   # Evening (least preferred)
+            '09:00-10:00': 1,  # Prime morning time
+            '10:00-11:00': 2,  # Excellent morning time 
+            '11:00-12:00': 3,  # Good morning time
+            '12:00-13:00': 8,  # Lunch time (avoid)
+            '13:00-14:00': 6,  # Post-lunch transition
+            '14:00-15:00': 2,  # Good afternoon time (PRIME afternoon slot)
+            '15:00-16:00': 4,  # Acceptable afternoon time
+            '16:00-17:00': 12, # Late afternoon (MUCH HIGHER penalty from 6)
+            '17:00-18:00': 20  # Evening (EXTREMELY HIGH penalty from 10) - nearly prohibitive
         }
-        return preferences.get(time_slot, 10)
+        return preferences.get(time_slot, 25)
+    
+    def _get_consecutive_penalty(self, course_name: str, day: str, time_slot: str) -> int:
+        """Add penalty for consecutive sessions of same course on same day."""
+        penalty = 0
+        
+        # Get time index for slot comparison
+        time_idx = self._get_time_index(time_slot)
+        if time_idx == -1:
+            return penalty
+            
+        # Extract base course name for comparison
+        base_course = course_name.split('(')[0].strip()
+            
+        # Check previous hour
+        if time_idx > 0:
+            prev_slot = self.time_slots[time_idx - 1]
+            if day in self.scheduled_slots and prev_slot in self.scheduled_slots[day]:
+                for session in self.scheduled_slots[day][prev_slot]:
+                    session_base = session['course'].split('(')[0].strip()
+                    if session_base == base_course:
+                        # EXTREMELY HIGH penalty for lecture-lecture back-to-back (CRITICAL SOFT CONSTRAINT)
+                        if 'lecture' in session['session_type'].lower() and 'lecture' in course_name.lower():
+                            penalty += 25  # INCREASED from 15 to 25 - make this nearly prohibitive
+                        else:
+                            penalty += 3  # Keep low for lab continuations (labs need to be consecutive)
+        
+        # Check next hour  
+        if time_idx < len(self.time_slots) - 1:
+            next_slot = self.time_slots[time_idx + 1]
+            if day in self.scheduled_slots and next_slot in self.scheduled_slots[day]:
+                for session in self.scheduled_slots[day][next_slot]:
+                    session_base = session['course'].split('(')[0].strip()
+                    if session_base == base_course:
+                        # EXTREMELY HIGH penalty for lecture-lecture back-to-back
+                        if 'lecture' in session['session_type'].lower() and 'lecture' in course_name.lower():
+                            penalty += 25  # INCREASED from 15 to 25 - make this nearly prohibitive
+                        else:
+                            penalty += 3  # Keep low for lab continuations
+                        
+        return penalty
+    
+    def _get_time_distribution_penalty(self, time_slot: str) -> int:
+        """Encourage better distribution across morning/afternoon and balance daily loads."""
+        penalty = 0
+        
+        # Count current morning vs afternoon sessions
+        morning_count = 0
+        afternoon_count = 0
+        
+        for day_schedule in self.scheduled_slots.values():
+            for slot, sessions in day_schedule.items():
+                if sessions:  # Non-empty sessions
+                    if slot < '13:00-14:00':
+                        morning_count += len(sessions)
+                    elif slot >= '14:00-15:00':
+                        afternoon_count += len(sessions)
+        
+        # Rule 4: Don't overload mornings while leaving afternoons empty
+        morning_afternoon_ratio = morning_count / max(afternoon_count, 1)  # Avoid division by zero
+        
+        if morning_afternoon_ratio > 2.0:  # REDUCED from 2.5 - more aggressive afternoon encouragement
+            if time_slot < '13:00-14:00':
+                penalty += 8  # INCREASED from 5 - stronger penalty for morning overload
+            elif time_slot >= '14:00-15:00':
+                penalty -= 5  # INCREASED from -3 - stronger bonus for afternoon sessions
+        elif morning_afternoon_ratio < 0.5:  # Too many afternoon sessions (rare but possible)
+            if time_slot < '13:00-14:00':
+                penalty -= 2  # Bonus for morning sessions
+            else:
+                penalty += 3  # Penalty for afternoon sessions
+        
+        # Rule 7: ENHANCED daily balance - prevent overloaded days
+        day_loads = {}
+        for day in self.days:
+            day_loads[day] = sum(len(sessions) for sessions in self.scheduled_slots.get(day, {}).values())
+        
+        max_daily_load = max(day_loads.values()) if day_loads.values() else 0
+        min_daily_load = min(day_loads.values()) if day_loads.values() else 0
+        avg_daily_load = sum(day_loads.values()) / len(day_loads) if day_loads.values() else 0
+        
+        # Strong penalty for days that are already heavily loaded
+        if max_daily_load - min_daily_load > 3:  # REDUCED from 2 - more sensitive to imbalance
+            penalty += 6  # INCREASED penalty for imbalanced days
+            
+        # Additional penalty for extremely packed days (9+ sessions)
+        if max_daily_load >= 9:
+            penalty += 10  # Very strong penalty for overloaded days
+        elif max_daily_load >= 7:
+            penalty += 5   # Strong penalty for heavy days
+            
+        # Encourage filling lighter days
+        if min_daily_load < avg_daily_load - 2:
+            penalty -= 3   # Bonus for balancing lighter days
+        
+        return penalty
+    
+    def _get_course_diversity_penalty(self, course_name: str, day: str) -> int:
+        """Encourage variety per day - different courses should appear within the same day."""
+        penalty = 0
+        
+        # Count courses already scheduled on this day
+        courses_today = set()
+        base_course = course_name.split('(')[0].strip()
+        
+        if day in self.scheduled_slots:
+            for sessions in self.scheduled_slots[day].values():
+                for session in sessions:
+                    session_base = session['course'].split('(')[0].strip()
+                    courses_today.add(session_base)
+        
+        # Rule 3: Spread lectures across multiple days - VERY AGGRESSIVE for clustering
+        course_sessions_today = sum(1 for sessions in self.scheduled_slots.get(day, {}).values()
+                                  for session in sessions 
+                                  if session['course'].split('(')[0].strip() == base_course)
+        
+        if course_sessions_today > 0:
+            # EXPONENTIAL penalty for clustering - make it extremely expensive
+            penalty += 15 + (course_sessions_today * 8)  # MUCH HIGHER base penalty (was 6 + 3x)
+            
+        # SPECIAL AGGRESSIVE handling for high-frequency courses
+        high_freq_courses = ['Mathematics', 'Data Structures', 'Operating Systems', 'Computer Networks']
+        if base_course in high_freq_courses:
+            # Count how many sessions of this course are scheduled across all days
+            total_sessions = sum(1 for day_sched in self.scheduled_slots.values()
+                               for sessions in day_sched.values()
+                               for session in sessions
+                               if session['course'].split('(')[0].strip() == base_course)
+            
+            # Count how many days this course appears on
+            days_with_course = sum(1 for day_name in self.days
+                                 if any(session['course'].split('(')[0].strip() == base_course
+                                       for sessions in self.scheduled_slots.get(day_name, {}).values()
+                                       for session in sessions))
+            
+            # Very aggressive penalty for bunching high-frequency courses
+            if days_with_course > 0:
+                sessions_per_day_ratio = total_sessions / days_with_course
+                if sessions_per_day_ratio > 1.2:  # Even stricter threshold (was 1.5)
+                    penalty += 20  # MUCH HIGHER penalty (was 8)
+                    
+                # Additional penalty for courses appearing 2+ times on same day
+                if course_sessions_today >= 1:  # Already appearing once
+                    penalty += 15  # Very high penalty for second appearance
+            
+        # Rule 5: A course cannot have lecture and lab in same day unless necessary
+        course_component = 'lecture' if 'lecture' in course_name.lower() else 'lab'
+        opposite_component = 'lab' if course_component == 'lecture' else 'lecture'
+        
+        for sessions in self.scheduled_slots.get(day, {}).values():
+            for session in sessions:
+                session_base = session['course'].split('(')[0].strip()
+                if session_base == base_course and opposite_component in session['course'].lower():
+                    penalty += 15  # INCREASED from 10 - very strong penalty for lecture+lab same day
+        
+        return penalty
+    
+    def _get_compactness_penalty(self, day: str, time_slot: str) -> int:
+        """Rule 6: Minimize gaps within a day, prefer compact blocks."""
+        penalty = 0
+        
+        if day not in self.scheduled_slots:
+            return penalty
+            
+        time_idx = self._get_time_index(time_slot)
+        if time_idx == -1:
+            return penalty
+            
+        # Check for gaps - find scheduled slots before and after
+        scheduled_before = []
+        scheduled_after = []
+        
+        for i in range(time_idx):
+            slot = self.time_slots[i]
+            if slot in self.scheduled_slots[day] and self.scheduled_slots[day][slot]:
+                scheduled_before.append(i)
+                
+        for i in range(time_idx + 1, len(self.time_slots)):
+            slot = self.time_slots[i]
+            if slot in self.scheduled_slots[day] and self.scheduled_slots[day][slot]:
+                scheduled_after.append(i)
+        
+        # If there are sessions both before and after with gaps, add penalty
+        if scheduled_before and scheduled_after:
+            gap_before = time_idx - max(scheduled_before) - 1
+            gap_after = min(scheduled_after) - time_idx - 1
+            
+            if gap_before > 1 or gap_after > 1:
+                penalty += 2  # Penalty for creating gaps
+            else:
+                penalty -= 1  # Bonus for filling gaps (compactness)
+        
+        return penalty
+    
+    def _get_daily_compactness_penalty(self, day: str, time_slot: str) -> int:
+        """Rule 6 Enhanced: Encourage breaks and prevent overpacked days."""
+        penalty = 0
+        
+        if day not in self.scheduled_slots:
+            return penalty
+            
+        # Count total sessions scheduled for this day
+        total_sessions_today = sum(len(sessions) for sessions in self.scheduled_slots[day].values())
+        
+        # VERY AGGRESSIVE penalty for overpacked days (address Monday 9-18 issue)
+        if total_sessions_today >= 8:
+            penalty += 30  # EXTREMELY HIGH penalty for 8+ sessions (was 12)
+        elif total_sessions_today >= 7:
+            penalty += 20  # VERY HIGH penalty for 7 sessions (was 6 for 6-7)
+        elif total_sessions_today >= 6:
+            penalty += 12  # HIGH penalty for 6 sessions
+        elif total_sessions_today >= 5:
+            penalty += 6   # Moderate penalty for 5 sessions (was 3)
+            
+        # ADDITIONAL penalty for extremely late sessions when day is already loaded
+        if total_sessions_today >= 6 and time_slot in ['16:00-17:00', '17:00-18:00']:
+            penalty += 15  # Extra penalty for late sessions on heavy days
+            
+        # Check for potential long stretches without breaks
+        time_idx = self._get_time_index(time_slot)
+        if time_idx == -1:
+            return penalty
+            
+        # Look for long consecutive stretches (4+ hours without break)
+        consecutive_before = 0
+        consecutive_after = 0
+        
+        # Count consecutive sessions before this slot
+        for i in range(time_idx - 1, -1, -1):
+            slot = self.time_slots[i]
+            if slot in self.scheduled_slots[day] and self.scheduled_slots[day][slot]:
+                consecutive_before += 1
+            else:
+                break
+                
+        # Count consecutive sessions after this slot
+        for i in range(time_idx + 1, len(self.time_slots)):
+            slot = self.time_slots[i]
+            if slot in self.scheduled_slots[day] and self.scheduled_slots[day][slot]:
+                consecutive_after += 1
+            else:
+                break
+        
+        total_consecutive = consecutive_before + consecutive_after + 1  # +1 for current slot
+        
+        # HIGHER penalty for long stretches without breaks
+        if total_consecutive >= 7:
+            penalty += 20  # Very high penalty for 7+ hour stretches
+        elif total_consecutive >= 6:
+            penalty += 12  # High penalty for 6+ hour stretches (was 8)
+        elif total_consecutive >= 4:
+            penalty += 6   # Moderate penalty for 4-5 hour stretches (was 4)
+            
+        return penalty
+    
+    def _get_core_subject_priority_penalty(self, course_name: str, time_slot: str) -> int:
+        """Special handling for core subjects - ensure they get prime time slots."""
+        penalty = 0
+        
+        base_course = course_name.split('(')[0].strip()
+        
+        # Define core subjects that should get priority time slots
+        core_subjects = ['Mathematics', 'Physics', 'Data Structures', 'Operating Systems', 'Database Systems']
+        
+        if base_course in core_subjects:
+            # STRONG penalty for placing core subjects in late slots
+            if time_slot == '17:00-18:00':
+                penalty += 25  # Extremely high penalty for 17-18 slot
+            elif time_slot == '16:00-17:00':
+                penalty += 15  # High penalty for 16-17 slot
+            elif time_slot == '12:00-13:00':
+                penalty += 10  # Penalty for lunch hour
+                
+            # Bonus for placing core subjects in prime slots
+            if time_slot in ['09:00-10:00', '10:00-11:00', '14:00-15:00']:
+                penalty -= 3   # Bonus for prime morning and afternoon slots
+            elif time_slot in ['11:00-12:00', '15:00-16:00']:
+                penalty -= 1   # Small bonus for good slots
+                
+        return penalty
+    
+    def calculate_soft_constraint_penalty(self, course_name: str, day: str, time_slot: str) -> int:
+        """
+        Calculate comprehensive soft constraint penalty score for placing a course.
+        Returns total penalty points for this placement.
+        """
+        total_penalty = 0
+        base_course = course_name.split('(')[0].strip()
+        is_lecture = 'lecture' in course_name.lower()
+        
+        # Penalty 1: Same course appears twice in a row (+1)
+        consecutive_penalty = self._check_consecutive_same_course(course_name, day, time_slot)
+        total_penalty += consecutive_penalty * self.PENALTY_CONSECUTIVE_SAME_COURSE
+        
+        # Penalty 2: Course occurs more than once per day (+1)
+        multiple_per_day_penalty = self._check_multiple_course_per_day(base_course, day)
+        total_penalty += multiple_per_day_penalty * self.PENALTY_MULTIPLE_COURSE_PER_DAY
+        
+        # Penalty 3: Lecture after 17:00 (+2) or very late (+3)
+        if is_lecture:
+            if time_slot == '17:00-18:00':
+                total_penalty += self.PENALTY_VERY_LATE_LECTURE
+            elif time_slot >= '17:00-18:00':
+                total_penalty += self.PENALTY_LATE_LECTURE
+        
+        # Penalty 4: Day has >7 hours scheduled (+2)
+        if self._count_day_sessions(day) >= 7:
+            total_penalty += self.PENALTY_OVERLOADED_DAY
+            
+        # Penalty 5: Lunch hour scheduling (+1)
+        if time_slot == '12:00-13:00':
+            total_penalty += self.PENALTY_LUNCH_HOUR
+            
+        # Penalty 6: Core subjects in late slots (+3)
+        core_subjects = ['Mathematics', 'Physics', 'Data Structures', 'Operating Systems', 'Database Systems']
+        if base_course in core_subjects and time_slot >= '16:00-17:00':
+            total_penalty += self.PENALTY_CORE_SUBJECT_LATE
+            
+        # Penalty 7: Lecture+Lab same day same course (+2)
+        if self._check_lecture_lab_same_day(base_course, day, course_name):
+            total_penalty += self.PENALTY_LECTURE_LAB_SAME_DAY
+            
+        # Penalty 8: Daily load imbalance (+1)
+        if self._check_daily_imbalance():
+            total_penalty += self.PENALTY_UNBALANCED_DAYS
+        
+        return total_penalty
+    
+    def _check_consecutive_same_course(self, course_name: str, day: str, time_slot: str) -> int:
+        """Check if same course appears in consecutive slots."""
+        time_idx = self._get_time_index(time_slot)
+        if time_idx == -1:
+            return 0
+            
+        base_course = course_name.split('(')[0].strip()
+        violations = 0
+        
+        # Check previous hour
+        if time_idx > 0:
+            prev_slot = self.time_slots[time_idx - 1]
+            if day in self.scheduled_slots and prev_slot in self.scheduled_slots[day]:
+                for session in self.scheduled_slots[day][prev_slot]:
+                    session_base = session['course'].split('(')[0].strip()
+                    if session_base == base_course and 'lecture' in session['session_type'].lower() and 'lecture' in course_name.lower():
+                        violations += 1
+        
+        # Check next hour  
+        if time_idx < len(self.time_slots) - 1:
+            next_slot = self.time_slots[time_idx + 1]
+            if day in self.scheduled_slots and next_slot in self.scheduled_slots[day]:
+                for session in self.scheduled_slots[day][next_slot]:
+                    session_base = session['course'].split('(')[0].strip()
+                    if session_base == base_course and 'lecture' in session['session_type'].lower() and 'lecture' in course_name.lower():
+                        violations += 1
+                        
+        return violations
+    
+    def _check_multiple_course_per_day(self, base_course: str, day: str) -> int:
+        """Check if course already appears on this day."""
+        if day not in self.scheduled_slots:
+            return 0
+            
+        course_count = 0
+        for sessions in self.scheduled_slots[day].values():
+            for session in sessions:
+                session_base = session['course'].split('(')[0].strip()
+                if session_base == base_course:
+                    course_count += 1
+                    
+        return 1 if course_count > 0 else 0
+    
+    def _count_day_sessions(self, day: str) -> int:
+        """Count total sessions scheduled for a day."""
+        if day not in self.scheduled_slots:
+            return 0
+        return sum(len(sessions) for sessions in self.scheduled_slots[day].values())
+    
+    def _check_lecture_lab_same_day(self, base_course: str, day: str, current_course: str) -> int:
+        """Check if lecture and lab of same course are on same day."""
+        if day not in self.scheduled_slots:
+            return 0
+            
+        current_type = 'lecture' if 'lecture' in current_course.lower() else 'lab'
+        opposite_type = 'lab' if current_type == 'lecture' else 'lecture'
+        
+        for sessions in self.scheduled_slots[day].values():
+            for session in sessions:
+                session_base = session['course'].split('(')[0].strip()
+                if session_base == base_course and opposite_type in session['course'].lower():
+                    return 1
+        return 0
+    
+    def _check_daily_imbalance(self) -> int:
+        """Check if daily loads are imbalanced."""
+        day_loads = [self._count_day_sessions(day) for day in self.days]
+        if not day_loads:
+            return 0
+        max_load = max(day_loads)
+        min_load = min(day_loads)
+        return 1 if max_load - min_load > 3 else 0
+    
+    def calculate_final_penalty_score(self) -> Dict:
+        """
+        Calculate comprehensive penalty score for the final timetable.
+        Returns detailed breakdown of all soft constraint violations.
+        """
+        penalty_breakdown = {
+            'consecutive_same_course': 0,
+            'multiple_course_per_day': 0,
+            'late_lectures': 0,
+            'very_late_lectures': 0,
+            'overloaded_days': 0,
+            'lunch_hour_sessions': 0,
+            'core_subjects_late': 0,
+            'lecture_lab_same_day': 0,
+            'daily_imbalance': 0,
+            'total_penalty': 0
+        }
+        
+        # Analyze each scheduled session
+        for day, day_schedule in self.scheduled_slots.items():
+            day_sessions = sum(len(sessions) for sessions in day_schedule.values())
+            
+            # Check overloaded days
+            if day_sessions > 7:
+                penalty_breakdown['overloaded_days'] += self.PENALTY_OVERLOADED_DAY
+                
+            for time_slot, sessions in day_schedule.items():
+                for session in sessions:
+                    course_name = session['course']
+                    base_course = course_name.split('(')[0].strip()
+                    is_lecture = 'lecture' in session['session_type'].lower()
+                    
+                    # Check late lectures
+                    if is_lecture:
+                        if time_slot == '17:00-18:00':
+                            penalty_breakdown['very_late_lectures'] += self.PENALTY_VERY_LATE_LECTURE
+                        elif time_slot >= '17:00-18:00':
+                            penalty_breakdown['late_lectures'] += self.PENALTY_LATE_LECTURE
+                    
+                    # Check lunch hour
+                    if time_slot == '12:00-13:00':
+                        penalty_breakdown['lunch_hour_sessions'] += self.PENALTY_LUNCH_HOUR
+                    
+                    # Check core subjects late
+                    core_subjects = ['Mathematics', 'Physics', 'Data Structures', 'Operating Systems', 'Database Systems']
+                    if base_course in core_subjects and time_slot >= '16:00-17:00':
+                        penalty_breakdown['core_subjects_late'] += self.PENALTY_CORE_SUBJECT_LATE
+        
+        # Check consecutive same course violations
+        for day, day_schedule in self.scheduled_slots.items():
+            time_slots_sorted = sorted(day_schedule.keys(), key=lambda x: self._get_time_index(x))
+            for i in range(len(time_slots_sorted) - 1):
+                current_slot = time_slots_sorted[i]
+                next_slot = time_slots_sorted[i + 1]
+                
+                if current_slot in day_schedule and next_slot in day_schedule:
+                    for current_session in day_schedule[current_slot]:
+                        for next_session in day_schedule[next_slot]:
+                            current_base = current_session['course'].split('(')[0].strip()
+                            next_base = next_session['course'].split('(')[0].strip()
+                            
+                            if (current_base == next_base and 
+                                'lecture' in current_session['session_type'].lower() and 
+                                'lecture' in next_session['session_type'].lower()):
+                                penalty_breakdown['consecutive_same_course'] += self.PENALTY_CONSECUTIVE_SAME_COURSE
+        
+        # Check multiple course per day violations
+        for day, day_schedule in self.scheduled_slots.items():
+            course_counts = {}
+            for sessions in day_schedule.values():
+                for session in sessions:
+                    base_course = session['course'].split('(')[0].strip()
+                    course_counts[base_course] = course_counts.get(base_course, 0) + 1
+            
+            for course, count in course_counts.items():
+                if count > 1:
+                    penalty_breakdown['multiple_course_per_day'] += (count - 1) * self.PENALTY_MULTIPLE_COURSE_PER_DAY
+        
+        # Check lecture+lab same day violations
+        for day, day_schedule in self.scheduled_slots.items():
+            course_types = {}
+            for sessions in day_schedule.values():
+                for session in sessions:
+                    base_course = session['course'].split('(')[0].strip()
+                    session_type = 'lecture' if 'lecture' in session['course'].lower() else 'lab'
+                    
+                    if base_course not in course_types:
+                        course_types[base_course] = set()
+                    course_types[base_course].add(session_type)
+            
+            for course, types in course_types.items():
+                if 'lecture' in types and 'lab' in types:
+                    penalty_breakdown['lecture_lab_same_day'] += self.PENALTY_LECTURE_LAB_SAME_DAY
+        
+        # Check daily imbalance
+        day_loads = [sum(len(sessions) for sessions in self.scheduled_slots.get(day, {}).values()) for day in self.days]
+        if day_loads:
+            max_load = max(day_loads)
+            min_load = min(day_loads)
+            if max_load - min_load > 3:
+                penalty_breakdown['daily_imbalance'] += self.PENALTY_UNBALANCED_DAYS
+        
+        # Calculate total
+        penalty_breakdown['total_penalty'] = sum(v for k, v in penalty_breakdown.items() if k != 'total_penalty')
+        
+        return penalty_breakdown
     
     def solve_timetable(self) -> Dict:
         """Generate timetable using iterative per-session scheduling to satisfy weekly_count fairly."""
@@ -716,9 +1357,20 @@ class SimpleTimetableSolver:
         # Build course state list
         course_states = []  # each: dict with remaining sessions/blocks
         for name, info in courses_info.items():
-            avail = self.parse_availability_slots(info.get('available_slots', []))
+            # Use available_slots directly if they're already parsed tuples
+            available_slots = info.get('available_slots', [])
+            if available_slots and isinstance(available_slots[0], str):
+                # If they're strings, parse them
+                avail = self.parse_availability_slots(available_slots)
+            else:
+                # If they're already tuples, use them directly
+                avail = available_slots
+            
             weekly = info.get('weekly_count', info.get('duration', 1))
             session_type = info.get('session_type', 'lecture')
+            
+            print(f"🔧 Building state for {name}: {len(avail)} available slots")
+            
             state = {
                 'name': name,
                 'faculty': info['faculty'],
@@ -727,7 +1379,7 @@ class SimpleTimetableSolver:
                 'weekly_target': weekly,
                 'remaining': weekly,   # lectures = sessions, labs = blocks
                 'available_slots': avail,
-                'density': weekly / max(1, len(avail))
+                'density': weekly / max(1, len(avail)) if len(avail) > 0 else float('inf')
             }
             # Expected weekly units: lectures count sessions; labs count block_hours * weekly
             if session_type == 'lab':
@@ -779,7 +1431,7 @@ class SimpleTimetableSolver:
             if len(unsatisfied) <= 3:  # Only if small number of deficits
                 print(f"\n🚨 Attempting emergency relaxation for {len(unsatisfied)} courses...")
                 self.MAX_FACULTY_SESSIONS_PER_DAY = 8  # Very high limit
-                self.allow_parallel = True
+                # Keep allow_parallel = False to prevent student conflicts
                 
                 # Retry failed courses with relaxed constraints
                 retry_rounds = 10
@@ -806,6 +1458,23 @@ class SimpleTimetableSolver:
 
         timetable = dict(self.scheduled_slots)
         self._post_validate_weekly_counts()
+        
+        # Calculate and add penalty analysis
+        penalty_score = self.calculate_final_penalty_score()
+        timetable['penalty_analysis'] = penalty_score
+        
+        print("\n=== PENALTY ANALYSIS ===")
+        print(f"Total Penalty Score: {penalty_score['total_penalty']}")
+        print("\nBreakdown:")
+        for violation_type, penalty in penalty_score.items():
+            if violation_type != 'total_penalty' and penalty > 0:
+                print(f"  {violation_type.replace('_', ' ').title()}: {penalty}")
+        
+        quality_rating = "EXCELLENT" if penalty_score['total_penalty'] <= 5 else \
+                        "GOOD" if penalty_score['total_penalty'] <= 10 else \
+                        "ACCEPTABLE" if penalty_score['total_penalty'] <= 20 else "NEEDS_IMPROVEMENT"
+        print(f"\nQuality Rating: {quality_rating}")
+        
         return timetable
 
     def _post_validate_weekly_counts(self):
@@ -852,6 +1521,8 @@ class SimpleTimetableSolver:
         
         # Check each time slot for conflicts
         for day in timetable:
+            if day == 'penalty_analysis':  # Skip penalty analysis data
+                continue
             for time_slot in timetable[day]:
                 classes = timetable[day][time_slot]
                 
@@ -936,11 +1607,43 @@ class SimpleTimetableSolver:
             for c, r in self.failure_reasons.items():
                 print(f"   {c}: {r}")
 
-    def solve_timetable_from_data(self, training_data):
-        """Solve timetable from provided training data (for API use)."""
+    def solve_timetable_from_data(self, courses_data):
+        """Solve timetable from provided course data (for API use)."""
         try:
-            # Store the provided training data
-            self.training_data = training_data
+            # Convert API format to internal format
+            if isinstance(courses_data, list):
+                # Convert list of courses to internal format
+                courses_info = {}
+                for course in courses_data:
+                    course_name = course.get('course_name', '').strip().lower()
+                    if not course_name:
+                        continue
+                    
+                    # Parse availability
+                    availability = course.get('faculty_availability', '')
+                    available_slots = self.parse_availability_slots(availability)
+                    
+                    courses_info[course_name] = {
+                        'faculty': course.get('faculty', '').strip(),
+                        'room': course.get('room', course.get('room_available', '')).strip(),
+                        'duration': course.get('duration', 1),
+                        'weekly_count': course.get('weekly_count', course.get('duration', 1)),
+                        'session_type': course.get('session_type', 'lecture').lower(),
+                        'available_slots': available_slots
+                    }
+                
+                # Create proper training data structure
+                self.training_data = {
+                    'metadata': {
+                        'total_courses': len(courses_info),
+                        'generation_date': '2025-09-13',
+                        'format_version': '1.0'
+                    },
+                    'courses_info': courses_info
+                }
+            else:
+                # Assume it's already in the correct format
+                self.training_data = courses_data
             
             # Solve using the standard method
             timetable = self.solve_timetable()
@@ -949,6 +1652,8 @@ class SimpleTimetableSolver:
             
         except Exception as e:
             print(f"❌ Error solving timetable from data: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
 if __name__ == "__main__":

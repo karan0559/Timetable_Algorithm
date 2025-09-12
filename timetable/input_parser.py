@@ -46,9 +46,9 @@ class CSVToDataConverter:
         has_component = 'Component' in df.columns
         
         if has_component:
-            # FIXED: Use just course name as key to combine lecture + lab components
-            df['CourseKey'] = df['CourseName'].str.strip()
-            print("🔧 Detected Component column - combining lecture/lab components")
+            # NEW: Create separate keys for each component (lecture/lab treated separately)
+            df['CourseKey'] = df['CourseName'].str.strip() + "_" + df['Component'].str.strip().str.lower()
+            print("🔧 Detected Component column - treating lecture/lab as separate sessions")
         else:
             # Original behavior: just course name
             df['CourseKey'] = df['CourseName'].str.strip()
@@ -59,34 +59,35 @@ class CSVToDataConverter:
             course_base = row['CourseName'].strip()
             component = row.get('Component', '').strip() if has_component else ''
             
-            weekly = int(row['WeeklyCount']) if 'WeeklyCount' in row and not pd.isna(row['WeeklyCount']) else 0
+            # Create display name for separate components
+            if has_component and component:
+                display_name = f"{course_base} ({component})"
+            else:
+                display_name = course_base
+            
+            # Default logic: If WeeklyCount not specified and component is Lecture, default to 3
+            if 'WeeklyCount' in row and not pd.isna(row['WeeklyCount']):
+                weekly = int(row['WeeklyCount'])
+            elif component.lower() == 'lecture':
+                weekly = 3  # Default to 3 lectures if not specified
+                print(f"🔧 Defaulting {course_base} lecture sessions to 3")
+            else:
+                weekly = 1 if component.lower() in ['lab', 'tutorial'] else 3  # Default lab/tutorial to 1, others to 3
+            
             avail_raw = self.parse_availability(row['FacultyAvailability'])
             avail_set = set([a.strip() for a in avail_raw.split(',') if a.strip()]) if avail_raw else set()
             
-            if key not in agg_records:
-                agg_records[key] = {
-                    'CourseName': course_base,  # Use base course name
-                    'Faculty': row['Faculty'],  # Will be updated if mixed
-                    'RoomAvailable': row['RoomAvailable'],  # Will be updated if mixed
-                    'SessionType': 'mixed' if has_component else str(row.get('SessionType','lecture')).lower(),
-                    'WeeklyCount': weekly,
-                    'AvailabilitySet': avail_set,
-                    'Components': [component] if component else []
-                }
-            else:
-                # Combine weekly counts from all components
-                agg_records[key]['WeeklyCount'] += weekly
-                # Union availability from all components
-                agg_records[key]['AvailabilitySet'].update(avail_set)
-                # Track components
-                if component and component not in agg_records[key]['Components']:
-                    agg_records[key]['Components'].append(component)
-                
-                # For mixed courses, combine faculty info
-                if has_component and row['Faculty'] != agg_records[key]['Faculty']:
-                    current_faculty = agg_records[key]['Faculty']
-                    new_faculty = row['Faculty']
-                    agg_records[key]['Faculty'] = f"{current_faculty} / {new_faculty}"
+            # Each component is treated as a separate course entity
+            agg_records[key] = {
+                'CourseName': display_name,  # Use component-specific display name
+                'Faculty': row['Faculty'],  # Keep faculty separate for each component
+                'RoomAvailable': row['RoomAvailable'],  # Keep room separate for each component
+                'SessionType': component.lower() if component else 'lecture',
+                'WeeklyCount': weekly,
+                'AvailabilitySet': avail_set,
+                'Duration': int(row.get('Duration', 1)) if pd.notna(row.get('Duration', 1)) else 1,
+                'Components': [component] if component else []
+            }
         
         # Build aggregated DataFrame
         agg_rows = []
@@ -97,7 +98,8 @@ class CSVToDataConverter:
                 'FacultyAvailability': ','.join(sorted(rec['AvailabilitySet'])) if rec['AvailabilitySet'] else '',
                 'RoomAvailable': rec['RoomAvailable'],
                 'SessionType': rec['SessionType'],
-                'WeeklyCount': rec['WeeklyCount']
+                'WeeklyCount': rec['WeeklyCount'],
+                'Duration': rec.get('Duration', 1)
             }
             if has_component:
                 rec_out['Components'] = ','.join(rec['Components']) if rec['Components'] else ''
@@ -353,4 +355,6 @@ def convert_sql_to_training_data():
     return convert_csv_to_training_data()
 
 if __name__ == "__main__":
-    convert_csv_to_training_data()
+    # Disabled auto-conversion to prevent overwriting user data
+    # convert_csv_to_training_data()
+    print("Input parser module loaded. Use convert_csv_to_training_data() manually if needed.")

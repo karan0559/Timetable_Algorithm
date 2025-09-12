@@ -1,65 +1,59 @@
 {
   "Monday": {
-    "09:00-10:00": [],
-    "10:00-11:00": [
+    "09:00-10:00": [
       {
-        "course": "Software Architecture",
-        "faculty": "Dr. Thompson",
-        "room": "202",
-        "duration": 1,
-        "session_type": "lecture"
-      },
-      {
-        "course": "Advanced Algorithms",
-        "faculty": "Dr. Anderson",
-        "room": "201",
+        "course": "mathematics",
+        "faculty": "Dr. Arjun Mehta",
+        "room": "Room 101",
         "duration": 1,
         "session_type": "lecture"
       }
     ],
-    "11:00-12:00": [
-      {
-        "course": "Software Architecture",
-        "faculty": "Dr. Thompson",
-        "room": "202",
-        "duration": 1,
-        "session_type": "lecture"
-      }
-    ],
+    "10:00-11:00": [],
+    "11:00-12:00": [],
     "12:00-13:00": [],
     "13:00-14:00": [],
-    "14:00-15:00": [],
-    "15:00-16:00": [],
+    "14:00-15:00": [
+      {
+        "course": "physics lab",
+        "faculty": "Prof. Kavita Sharma",
+        "room": "Lab 101",
+        "duration": 2,
+        "session_type": "lab"
+      }
+    ],
+    "15:00-16:00": [
+      {
+        "course": "physics lab",
+        "faculty": "Prof. Kavita Sharma",
+        "room": "Lab 101",
+        "duration": 2,
+        "session_type": "lab"
+      }
+    ],
     "16:00-17:00": [],
     "17:00-18:00": []
   },
   "Tuesday": {
     "09:00-10:00": [
       {
-        "course": "Machine Learning Lab",
-        "faculty": "Prof. Martinez",
-        "room": "Lab3",
-        "duration": 2,
-        "session_type": "lab"
-      }
-    ],
-    "10:00-11:00": [
-      {
-        "course": "Cloud Computing",
-        "faculty": "Prof. Chen",
-        "room": "203",
+        "course": "mathematics",
+        "faculty": "Dr. Arjun Mehta",
+        "room": "Room 101",
         "duration": 1,
         "session_type": "lecture"
-      },
-      {
-        "course": "Machine Learning Lab",
-        "faculty": "Prof. Martinez",
-        "room": "Lab3",
-        "duration": 2,
-        "session_type": "lab"
       }
     ],
-    "11:00-12:00": [],
+    "10:00-11:00": [],
+    "11:00-12:00": [
+      {
+        "course": "english",
+        "faculty": "Prof. Sunita Verma",
+        "room": "Room 101",
+        "duration": 1,
+        "session_type": "lecture"
+      }
+    ],
     "12:00-13:00": [],
     "13:00-14:00": [],
     "14:00-15:00": [],
@@ -68,19 +62,20 @@
     "17:00-18:00": []
   },
   "Wednesday": {
-    "09:00-10:00": [],
-    "10:00-11:00": [
+    "09:00-10:00": [
       {
-        "course": "Advanced Algorithms",
-        "faculty": "Dr. Anderson",
-        "room": "201",
+        "course": "physics",
+        "faculty": "Dr. Arjun Mehta",
+        "room": "Room 102",
         "duration": 1,
         "session_type": "lecture"
-      },
+      }
+    ],
+    "10:00-11:00": [
       {
-        "course": "DevOps Engineering",
-        "faculty": "Dr. Rodriguez",
-        "room": "204",
+        "course": "chemistry",
+        "faculty": "Dr. Priya Joshi",
+        "room": "Room 103",
         "duration": 1,
         "session_type": "lecture"
       }
@@ -96,30 +91,31 @@
   "Thursday": {
     "09:00-10:00": [
       {
-        "course": "Machine Learning Lab",
-        "faculty": "Prof. Martinez",
-        "room": "Lab3",
-        "duration": 2,
-        "session_type": "lab"
-      }
-    ],
-    "10:00-11:00": [
-      {
-        "course": "Machine Learning Lab",
-        "faculty": "Prof. Martinez",
-        "room": "Lab3",
-        "duration": 2,
-        "session_type": "lab"
-      },
-      {
-        "course": "Cloud Computing",
-        "faculty": "Prof. Chen",
-        "room": "203",
+        "course": "chemistry",
+        "faculty": "Dr. Priya Joshi",
+        "room": "Room 103",
         "duration": 1,
         "session_type": "lecture"
       }
     ],
-    "11:00-12:00": [],
+    "10:00-11:00": [
+      {
+        "course": "physics",
+        "faculty": "Dr. Arjun Mehta",
+        "room": "Room 102",
+        "duration": 1,
+        "session_type": "lecture"
+      }
+    ],
+    "11:00-12:00": [
+      {
+        "course": "english",
+        "faculty": "Prof. Sunita Verma",
+        "room": "Room 101",
+        "duration": 1,
+        "session_type": "lecture"
+      }
+    ],
     "12:00-13:00": [],
     "13:00-14:00": [],
     "14:00-15:00": [],
@@ -128,28 +124,37 @@
     "17:00-18:00": []
   },
   "Friday": {
-    "09:00-10:00": [],
-    "10:00-11:00": [
+    "09:00-10:00": [
       {
-        "course": "System Design",
-        "faculty": "Prof. Kumar",
-        "room": "205",
-        "duration": 1,
-        "session_type": "lecture"
-      },
-      {
-        "course": "Advanced Algorithms",
-        "faculty": "Dr. Anderson",
-        "room": "201",
+        "course": "mathematics",
+        "faculty": "Dr. Arjun Mehta",
+        "room": "Room 101",
         "duration": 1,
         "session_type": "lecture"
       }
     ],
+    "10:00-11:00": [],
     "11:00-12:00": [],
     "12:00-13:00": [],
     "13:00-14:00": [],
-    "14:00-15:00": [],
-    "15:00-16:00": [],
+    "14:00-15:00": [
+      {
+        "course": "chemistry lab",
+        "faculty": "Dr. Ravi Kumar",
+        "room": "Lab 101",
+        "duration": 2,
+        "session_type": "lab"
+      }
+    ],
+    "15:00-16:00": [
+      {
+        "course": "chemistry lab",
+        "faculty": "Dr. Ravi Kumar",
+        "room": "Lab 101",
+        "duration": 2,
+        "session_type": "lab"
+      }
+    ],
     "16:00-17:00": [],
     "17:00-18:00": []
   }
