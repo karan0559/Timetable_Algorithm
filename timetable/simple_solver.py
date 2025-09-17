@@ -1357,17 +1357,25 @@ class SimpleTimetableSolver:
         # Build course state list
         course_states = []  # each: dict with remaining sessions/blocks
         for name, info in courses_info.items():
-            # Use available_slots directly if they're already parsed tuples
-            available_slots = info.get('available_slots', [])
+            # Handle both old and new data structures
+            if 'sessions' in info and info['sessions']:
+                # New API structure - get data from first session
+                session_data = info['sessions'][0]
+                available_slots = session_data.get('available_slots', [])
+                weekly = session_data.get('weekly_count', 1)
+                session_type = session_data.get('component', 'Lecture').lower()
+            else:
+                # Old structure - direct access
+                available_slots = info.get('available_slots', [])
+                weekly = info.get('weekly_count', info.get('duration', 1))
+                session_type = info.get('session_type', 'lecture')
+            
             if available_slots and isinstance(available_slots[0], str):
                 # If they're strings, parse them
                 avail = self.parse_availability_slots(available_slots)
             else:
                 # If they're already tuples, use them directly
                 avail = available_slots
-            
-            weekly = info.get('weekly_count', info.get('duration', 1))
-            session_type = info.get('session_type', 'lecture')
             
             print(f"🔧 Building state for {name}: {len(avail)} available slots")
             
@@ -1619,17 +1627,21 @@ class SimpleTimetableSolver:
                     if not course_name:
                         continue
                     
-                    # Parse availability
-                    availability = course.get('faculty_availability', '')
+                    # Parse availability (check both possible field names)
+                    availability = course.get('availability', course.get('faculty_availability', ''))
                     available_slots = self.parse_availability_slots(availability)
                     
                     courses_info[course_name] = {
                         'faculty': course.get('faculty', '').strip(),
                         'room': course.get('room', course.get('room_available', '')).strip(),
-                        'duration': course.get('duration', 1),
-                        'weekly_count': course.get('weekly_count', course.get('duration', 1)),
-                        'session_type': course.get('session_type', 'lecture').lower(),
-                        'available_slots': available_slots
+                        'sessions': [
+                            {
+                                'component': 'Lecture' if course.get('session_type', 'lecture').lower() == 'lecture' else 'Lab',
+                                'duration': course.get('duration', 1),
+                                'weekly_count': course.get('weekly_count', course.get('duration', 1)),
+                                'available_slots': available_slots
+                            }
+                        ]
                     }
                 
                 # Create proper training data structure

@@ -225,15 +225,11 @@ def generate_timetable():
         
         logger.info(f"Generating timetable for {len(courses)} courses using simple solver")
         
-        # Convert API format to internal format
-        training_data = convert_api_to_training_format(courses)
-        
-        # Use simple solver
+        # Use simple solver with direct course data (bypassing conversion)
         solver = SimpleTimetableSolver()
         
-        # Load data and generate timetable
-        solver.training_data = training_data
-        timetable = solver.solve_timetable()
+        # Generate timetable directly from API courses
+        timetable = solver.solve_timetable_from_data(courses)
         
         if not timetable:
             return jsonify({
@@ -242,7 +238,7 @@ def generate_timetable():
             }), 500
         
         # Generate statistics
-        stats = generate_statistics(timetable, training_data, solver)
+        stats = generate_statistics(timetable, {"metadata": {"total_courses": len(courses)}}, solver)
         
         return jsonify({
             "success": True,
@@ -272,13 +268,20 @@ def convert_api_to_training_format(courses):
         availability = course.get('availability', '')
         available_slots = parse_availability_to_slots(availability)
         
+        # Convert session_type to component format
+        component = "Lecture" if course['session_type'] == "lecture" else "Lab"
+        
         courses_info[course_name] = {
             "faculty": course['faculty'],
             "room": course['room'],
-            "duration": course['duration'],
-            "weekly_count": course['weekly_count'],
-            "session_type": course['session_type'],
-            "available_slots": available_slots
+            "sessions": [  # ✅ Wrap in sessions array
+                {
+                    "component": component,  # ✅ Use "component" not "session_type"
+                    "duration": course['duration'],
+                    "weekly_count": course['weekly_count'],
+                    "available_slots": available_slots
+                }
+            ]
         }
     
     return {
@@ -348,6 +351,10 @@ def generate_statistics(timetable, training_data, solver):
     courses_scheduled = set()
     
     for day, day_schedule in timetable.items():
+        # Skip non-day keys like 'penalty_analysis'
+        if day == 'penalty_analysis':
+            continue
+            
         if any(day_schedule.values()):  # If day has any sessions
             days_used.add(day)
         
